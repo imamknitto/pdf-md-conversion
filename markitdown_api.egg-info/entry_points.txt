@@ -1,0 +1,2 @@
+[console_scripts]
+markitdown-convert = app.cli:main

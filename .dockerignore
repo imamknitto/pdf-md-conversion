@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git/
+.gitignore
+
+# local samples & outputs (never baked into the image)
+*.pdf
+*.md
+!README.md
+public/
+tmp/
+*.tmp
+.env

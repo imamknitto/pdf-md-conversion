@@ -1,0 +1,35 @@
+Proyek ini bukan aplikasi web/service — kumpulan 2 script Python (+ venv) untuk konversi PDF → Markdown + ekstrak gambar. Nama foldernya "markitdown", tapi script-nya pakai PyMuPDF, bukan library markitdown.
+
+Command
+# 1. aktivasi venv (PowerShell)
+.\.venv\Scripts\Activate.ps1
+
+# 2. jalankan
+python .\extract_pdf_images.py   # hanya tarik gambar -> folder images\
+python .\build_markdown.py       # text + gambar -> cookbook.md + images\
+
+# tanpa aktivasi venv:
+.\.venv\Scripts\python.exe .\build_markdown.py
+Alternatif pakai CLI markitdown yang sudah terinstall:
+.\.venv\Scripts\markitdown.exe .\brd-lms.pdf -o .\brd-lms.md
+
+Prosesnya
+extract_pdf_images.py (extract_pdf_images.py:1)
+1. Buka cookbook.pdf dengan fitz (= pymupdf)
+2. Loop per halaman → page.get_images(full=True) ambil xref tiap gambar
+3. pdf.extract_image(xref) → tulis bytes ke images/page-XXX-image-YYY.<ext>
+4. Print jumlah gambar
+
+build_markdown.py (build_markdown.py:1)
+
+1. Buka cookbook.pdf, loop per halaman
+2. Ambil text layer (page.get_text("text")); kalau kosong → tulis _Tidak ada text layer pada halaman ini._ (placeholder, tidak ada OCR)
+3. Ekstrak gambar per halaman (dedup by xref), simpan ke images\
+4. Susun ## Page N + text + ![Image halaman N](...) + --- pemisah
+5. Tulis semua ke cookbook.md
+
+Catatan penting- Path hardcoded ke cookbook.pdf — brd-lms.pdf tidak bisa diproses tanpa edit baris 4 di kedua script. Mau saya jadikan argumen CLI (sys.argv[1])?
+
+- Output ditulis ke CWD, jadi jalankan dari root project (build_markdown.py akan menimpa cookbook.md existing).
+- import fitz di extract_pdf_images.py:1 sudah deprecated → ganti ke import pymupdf.
+- requriements.txt (typo) adalah hasil pip freeze, bukan daftar install manual.(match dengan venv sekarang)

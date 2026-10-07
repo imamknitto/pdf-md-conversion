@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# runtime artifacts
+public/*
+!public/.gitkeep
+tmp/
+*.tmp
+
+# local-only: env, samples & generated outputs (keep repo lean)
+.env
+*.pdf
+/*.md
+!README.md
+!CHANGELOG.md
+
+# legacy outputs
+legacy/*.md

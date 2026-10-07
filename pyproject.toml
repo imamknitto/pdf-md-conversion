@@ -1,0 +1,27 @@
+[project]
+name = "markitdown-api"
+version = "0.1.0"
+description = "REST API + CLI untuk konversi PDF/dokumen ke Markdown (PyMuPDF, pdfplumber, RapidOCR, markitdown)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "python-multipart>=0.0.9",
+    "rapidocr-onnxruntime>=1.2",
+    "pdfplumber>=0.11",
+    "markitdown>=0.1",
+    "pymupdf>=1.24",
+    "pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+markitdown-convert = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
