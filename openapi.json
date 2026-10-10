@@ -1,1 +1,669 @@
-{"openapi":"3.1.0","info":{"title":"markitdown-api","version":"0.1.0"},"paths":{"/health":{"get":{"summary":"Health","operationId":"health_health_get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"additionalProperties":true,"type":"object","title":"Response Health Health Get"}}}}}}},"/download/{doc_id}":{"get":{"summary":"Download Markdown","description":"Unduh markdown sebagai file text/markdown (tanpa escape JSON).","operationId":"download_markdown_download__doc_id__get","security":[{"HTTPBearer":[]}],"parameters":[{"name":"doc_id","in":"path","required":true,"schema":{"type":"string","title":"Doc Id"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/convert":{"post":{"summary":"Convert","operationId":"convert_convert_post","requestBody":{"content":{"multipart/form-data":{"schema":{"$ref":"#/components/schemas/Body_convert_convert_post"}}},"required":true},"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ConvertResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}},"security":[{"HTTPBearer":[]}]}}},"components":{"schemas":{"Body_convert_convert_post":{"properties":{"file":{"type":"string","contentMediaType":"application/octet-stream","title":"File"},"scan_images":{"type":"boolean","title":"Scan Images","default":false}},"type":"object","required":["file"],"title":"Body_convert_convert_post"},"ConvertResponse":{"properties":{"doc_id":{"type":"string","title":"Doc Id"},"markdown":{"type":"string","title":"Markdown"},"markdown_url":{"type":"string","title":"Markdown Url"},"stats":{"$ref":"#/components/schemas/ConvertStats"},"images":{"items":{"$ref":"#/components/schemas/ImageMeta"},"type":"array","title":"Images"},"warnings":{"items":{"type":"string"},"type":"array","title":"Warnings"},"expires_at":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Expires At"}},"type":"object","required":["doc_id","markdown","markdown_url","stats","images","warnings"],"title":"ConvertResponse"},"ConvertStats":{"properties":{"pages":{"type":"integer","title":"Pages"},"scanned_pages":{"type":"integer","title":"Scanned Pages"},"tables":{"type":"integer","title":"Tables"},"images_kept":{"type":"integer","title":"Images Kept"},"images_skipped":{"type":"integer","title":"Images Skipped"}},"type":"object","required":["pages","scanned_pages","tables","images_kept","images_skipped"],"title":"ConvertStats"},"HTTPValidationError":{"properties":{"detail":{"items":{"$ref":"#/components/schemas/ValidationError"},"type":"array","title":"Detail"}},"type":"object","title":"HTTPValidationError"},"ImageMeta":{"properties":{"page":{"type":"integer","title":"Page"},"kind":{"type":"string","title":"Kind"},"filename":{"type":"string","title":"Filename"},"url":{"type":"string","title":"Url"},"width":{"type":"integer","title":"Width"},"height":{"type":"integer","title":"Height"},"size_bytes":{"type":"integer","title":"Size Bytes"}},"type":"object","required":["page","kind","filename","url","width","height","size_bytes"],"title":"ImageMeta"},"ValidationError":{"properties":{"loc":{"items":{"anyOf":[{"type":"string"},{"type":"integer"}]},"type":"array","title":"Location"},"msg":{"type":"string","title":"Message"},"type":{"type":"string","title":"Error Type"},"input":{"title":"Input"},"ctx":{"type":"object","title":"Context"}},"type":"object","required":["loc","msg","type"],"title":"ValidationError"}},"securitySchemes":{"HTTPBearer":{"type":"http","scheme":"bearer"}}}}
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "doc-md-conversion",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents": {
+      "get": {
+        "summary": "List Documents",
+        "description": "Daftar dokumen hasil konversi yang masih tersedia (terbaru dulu).",
+        "operationId": "list_documents_documents_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Documents Documents Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/download/{doc_id}": {
+      "get": {
+        "summary": "Download Markdown",
+        "description": "Unduh markdown sebagai file text/markdown (tanpa escape JSON).",
+        "operationId": "download_markdown_download__doc_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{doc_id}": {
+      "delete": {
+        "summary": "Delete Document",
+        "description": "Hapus dokumen hasil konversi beserta seluruh artefaknya.",
+        "operationId": "delete_document_documents__doc_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Document Documents  Doc Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/convert": {
+      "post": {
+        "summary": "Convert",
+        "operationId": "convert_convert_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_convert_convert_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/convert/jobs": {
+      "post": {
+        "summary": "Convert Async",
+        "description": "Accept a conversion as a background job (for large PDFs).\n\nReturns 202 immediately; poll GET /convert/jobs/{job_id}. The heavy\nwork runs in a thread so /health stays responsive on the single worker.",
+        "operationId": "convert_async_convert_jobs_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_convert_async_convert_jobs_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertJobAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/convert/jobs/{job_id}": {
+      "get": {
+        "summary": "Convert Job Status",
+        "operationId": "convert_job_status_convert_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertJobStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_convert_async_convert_jobs_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "scan_images": {
+            "type": "boolean",
+            "title": "Scan Images",
+            "default": false
+          },
+          "extract_images": {
+            "type": "boolean",
+            "title": "Extract Images",
+            "default": true
+          },
+          "ocr_images": {
+            "type": "boolean",
+            "title": "Ocr Images",
+            "default": false
+          },
+          "ocr_scope": {
+            "type": "string",
+            "title": "Ocr Scope",
+            "default": "all"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_convert_async_convert_jobs_post"
+      },
+      "Body_convert_convert_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "scan_images": {
+            "type": "boolean",
+            "title": "Scan Images",
+            "default": false
+          },
+          "extract_images": {
+            "type": "boolean",
+            "title": "Extract Images",
+            "default": true
+          },
+          "ocr_images": {
+            "type": "boolean",
+            "title": "Ocr Images",
+            "default": false
+          },
+          "ocr_scope": {
+            "type": "string",
+            "title": "Ocr Scope",
+            "default": "all"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_convert_convert_post"
+      },
+      "ConvertJobAccepted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "doc_id": {
+            "type": "string",
+            "title": "Doc Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "queued"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "doc_id"
+        ],
+        "title": "ConvertJobAccepted"
+      },
+      "ConvertJobProgress": {
+        "properties": {
+          "pages_done": {
+            "type": "integer",
+            "title": "Pages Done",
+            "default": 0
+          },
+          "pages_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pages Total"
+          }
+        },
+        "type": "object",
+        "title": "ConvertJobProgress"
+      },
+      "ConvertJobStatus": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "doc_id": {
+            "type": "string",
+            "title": "Doc Id"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConvertJobProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConvertResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "doc_id",
+          "status"
+        ],
+        "title": "ConvertJobStatus"
+      },
+      "ConvertResponse": {
+        "properties": {
+          "doc_id": {
+            "type": "string",
+            "title": "Doc Id"
+          },
+          "markdown": {
+            "type": "string",
+            "title": "Markdown"
+          },
+          "markdown_url": {
+            "type": "string",
+            "title": "Markdown Url"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ConvertStats"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageMeta"
+            },
+            "type": "array",
+            "title": "Images"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "doc_id",
+          "markdown",
+          "markdown_url",
+          "stats",
+          "images",
+          "warnings"
+        ],
+        "title": "ConvertResponse"
+      },
+      "ConvertStats": {
+        "properties": {
+          "pages": {
+            "type": "integer",
+            "title": "Pages"
+          },
+          "scanned_pages": {
+            "type": "integer",
+            "title": "Scanned Pages"
+          },
+          "tables": {
+            "type": "integer",
+            "title": "Tables"
+          },
+          "images_kept": {
+            "type": "integer",
+            "title": "Images Kept"
+          },
+          "images_skipped": {
+            "type": "integer",
+            "title": "Images Skipped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pages",
+          "scanned_pages",
+          "tables",
+          "images_kept",
+          "images_skipped"
+        ],
+        "title": "ConvertStats"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImageMeta": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "ocr_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Text"
+          },
+          "flowchart_mermaid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flowchart Mermaid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "kind",
+          "filename",
+          "url",
+          "width",
+          "height",
+          "size_bytes"
+        ],
+        "title": "ImageMeta"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

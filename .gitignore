@@ -1,4 +1,5 @@
 .venv/
+*.egg-info/
 __pycache__/
 *.pyc
 *.pyo
@@ -16,6 +17,7 @@ tmp/
 /*.md
 !README.md
 !CHANGELOG.md
+*.log
 
-# legacy outputs
-legacy/*.md
+# removed upstream — never re-add
+legacy/

@@ -22,14 +22,14 @@ RUN pip install --upgrade pip && pip install .
 RUN mkdir -p /data/public && useradd -m -u 10001 appuser && chown -R appuser:appuser /srv /data
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8379
 VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+  CMD curl -fsS http://127.0.0.1:8379/health || exit 1
 
 # Single worker: OCR engine is an in-process singleton
-# Default port 8100: :8000 belongs to the public gateway in every environment.
+# Default port 8379.
 # Binds 0.0.0.0 for container networking; the image publishes no port and the
 # service is only reachable inside the private network (plus bearer token).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100", "--workers", "1"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8379", "--workers", "1"]

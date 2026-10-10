@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import os
-import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pymupdf
 
 from . import config, storage
+from . import flowchart as flowchart_mod
 from .extractor import extract_text
-from .ocr import ocr_image
+from .ocr import ocr_image, ocr_image_boxes_ex
 from .tables import extract_tables, table_to_markdown
 
 
@@ -45,33 +45,14 @@ def _max_image_ratio(page: pymupdf.Page, xref: int) -> float:
     return max(abs(r.width * r.height) for r in rects) / page_area
 
 
-def _markitdown_page(doc: pymupdf.Document, index: int) -> str:
-    try:
-        from markitdown import MarkItDown
-    except Exception:
-        return ""
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-    tmp.close()
-    try:
-        single = pymupdf.open()
-        single.insert_pdf(doc, from_page=index, to_page=index)
-        single.save(tmp.name)
-        single.close()
-        return MarkItDown().convert(tmp.name).text_content.strip()
-    except Exception:
-        return ""
-    finally:
-        try:
-            os.remove(tmp.name)
-        except OSError:
-            pass
-
-
 def convert_pdf(
     pdf_path: Path,
     doc_id: str,
     scan_images: bool = False,
     extract_images: bool = True,
+    ocr_images: bool = False,
+    ocr_scope: str = "all",
+    on_page: Callable[[int, int], None] | None = None,
 ) -> ConvertResult:
     result = ConvertResult(doc_id=doc_id, markdown="")
     dirs = storage.ensure_doc_dirs(doc_id)
@@ -83,6 +64,9 @@ def convert_pdf(
         result.pages = doc.page_count
         recurring = _recurring_xrefs(doc)
         image_cap_hit = False
+        ocr_done = 0
+        ocr_capped = 0
+        ocr_tiny = 0
 
         for index, page in enumerate(doc):
             number = index + 1
@@ -128,8 +112,6 @@ def convert_pdf(
                     )
             else:
                 body = extract_text(page, exclude)
-                if not body and not tables:
-                    body = _markitdown_page(doc, index)
                 if body:
                     parts.append(body)
 
@@ -140,6 +122,7 @@ def convert_pdf(
             if extract_images:
                 seen: set[int] = set()
                 img_no = 0
+                skipped_nonflow = 0
                 for info in page.get_images(full=True):
                     xref = info[0]
                     if xref in seen:
@@ -175,21 +158,93 @@ def convert_pdf(
                     filename = f"page-{number:03d}-image-{img_no:03d}.{ext}"
                     storage.write_bytes(dirs["images"], filename, data["image"])
                     result.images_kept += 1
-                    result.images.append(
-                        {
-                            "page": number,
-                            "kind": "image",
-                            "filename": filename,
-                            "url": storage.public_url(doc_id, "images", filename),
-                            "width": data["width"],
-                            "height": data["height"],
-                            "size_bytes": len(data["image"]),
-                        }
+                    entry: dict = {
+                        "page": number,
+                        "kind": "image",
+                        "filename": filename,
+                        "url": storage.public_url(doc_id, "images", filename),
+                        "width": data["width"],
+                        "height": data["height"],
+                        "size_bytes": len(data["image"]),
+                        "ocr_text": None,
+                        "flowchart_mermaid": None,
+                    }
+                    result.images.append(entry)
+                    parts.append(f"![Gambar halaman {number}]({entry['url']})")
+                    if ocr_images:
+                        if ocr_done >= config.OCR_MAX_IMAGES:
+                            ocr_capped += 1
+                            continue
+                        ocr_done += 1
+                        try:
+                            boxes, ocr_status = ocr_image_boxes_ex(data["image"])
+                        except Exception:
+                            boxes, ocr_status = [], "broken"
+                        if ocr_status == "tiny":
+                            ocr_tiny += 1
+                        if boxes:
+                            entry["ocr_text"] = "\n".join(b["text"] for b in boxes)
+                            write_block = True
+                            if ocr_scope == "flowchart":
+                                try:
+                                    rects = page.get_image_rects(xref)
+                                    verdict = flowchart_mod.is_flowchart(
+                                        boxes,
+                                        page=page,
+                                        img_rect=rects[0] if rects else None,
+                                    )
+                                except Exception:
+                                    verdict = {"yes": False}
+                                write_block = bool(verdict.get("yes"))
+                            if write_block:
+                                quoted = "\n".join(f"> {b['text']}" for b in boxes)
+                                parts.append(f"> OCR:\n{quoted}")
+                                if config.FLOWCHART_ENABLE:
+                                    try:
+                                        fc = flowchart_mod.from_ocr_boxes(boxes)
+                                    except Exception:
+                                        fc = None
+                                    if fc and fc.get("mermaid"):
+                                        entry["flowchart_mermaid"] = fc["mermaid"]
+                            else:
+                                skipped_nonflow += 1
+                        else:
+                            parts.append("> OCR: _tidak menghasilkan teks._")
+                if skipped_nonflow:
+                    result.warnings.append(
+                        f"Halaman {number}: {skipped_nonflow} gambar dilewati "
+                        "(bukan flowchart)."
                     )
-                    parts.append(f"![Gambar halaman {number}]({result.images[-1]['url']})")
+
+            if ocr_images and config.FLOWCHART_ENABLE and not is_scan and not tables:
+                try:
+                    fc_page = flowchart_mod.from_page(page)
+                except Exception:
+                    fc_page = None
+                if fc_page and len(fc_page.get("nodes", [])) >= 2:
+                    if fc_page.get("confidence") == "low":
+                        result.warnings.append(
+                            f"Halaman {number}: struktur flowchart tidak pasti, "
+                            "hanya urutan baca linear."
+                        )
 
             parts.append("---")
             result.markdown += "\n\n".join(parts) + "\n\n"
+            if on_page is not None:
+                try:
+                    on_page(number, result.pages)
+                except Exception:
+                    pass
+
+    if ocr_capped:
+        result.warnings.append(
+            f"Batas {config.OCR_MAX_IMAGES} gambar OCR tercapai; "
+            f"{ocr_capped} gambar disimpan tanpa teks OCR."
+        )
+    if ocr_tiny:
+        result.warnings.append(
+            f"{ocr_tiny} gambar terlalu kecil untuk OCR, disimpan tanpa teks OCR."
+        )
 
     # Persist markdown apa adanya (newline asli) agar klien bisa unduh
     # file langsung tanpa harus parse field JSON `markdown` (yang di

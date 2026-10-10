@@ -7,7 +7,7 @@ import time
 
 from . import config
 
-logger = logging.getLogger("markitdown.cleanup")
+logger = logging.getLogger("doc-md-conversion.cleanup")
 
 
 def _dir_size(path) -> int:

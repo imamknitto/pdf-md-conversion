@@ -11,12 +11,14 @@ from .converter import convert_pdf
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="markitdown-convert",
+        prog="doc-md-conversion",
         description="Konversi PDF ke Markdown tanpa API (pipeline sama dengan endpoint).",
     )
     parser.add_argument("input", type=Path, help="Path file PDF")
     parser.add_argument("-o", "--output", type=Path, default=None, help="Path file .md keluaran")
     parser.add_argument("--scan-images", action="store_true", help="Aktifkan OCR halaman scan")
+    parser.add_argument("--ocr-images", action="store_true", help="OCR tiap gambar embedded + flowchart")
+    parser.add_argument("--ocr-scope", choices=["all", "flowchart"], default="all", help="Cakupan OCR gambar (default: all)")
     parser.add_argument("--no-images", action="store_true", help="Jangan ekstrak gambar")
     parser.add_argument("--public-dir", type=Path, default=None, help="Override folder public")
     parser.add_argument("--json", action="store_true", help="Cetak metadata JSON ke stdout")
@@ -44,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
         doc_id=doc_id,
         scan_images=args.scan_images,
         extract_images=not args.no_images,
+        ocr_images=args.ocr_images,
+        ocr_scope=args.ocr_scope,
     )
 
     output.write_text(result.markdown, encoding="utf-8")
