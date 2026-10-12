@@ -22,9 +22,7 @@ def test_convert_sample_structure(client):
 
 
 def test_convert_rejects_non_pdf_suffix(client):
-    r = client.post(
-        "/convert", files={"file": ("note.txt", b"hello", "text/plain")}
-    )
+    r = client.post("/convert", files={"file": ("note.txt", b"hello", "text/plain")})
     assert r.status_code == 400
 
 

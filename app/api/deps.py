@@ -33,9 +33,7 @@ def _validate_upload(filename: str, content_type: str, data: bytes) -> None:
     if Path(filename).suffix.lower() != ".pdf":
         raise HTTPException(status_code=400, detail="v1 hanya mendukung file PDF.")
     if content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=400, detail=f"content-type tidak didukung: {content_type}"
-        )
+        raise HTTPException(status_code=400, detail=f"content-type tidak didukung: {content_type}")
     if len(data) > config.MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
@@ -45,9 +43,7 @@ def _validate_upload(filename: str, content_type: str, data: bytes) -> None:
         raise HTTPException(status_code=400, detail="File bukan PDF yang valid.")
 
 
-def _write_meta_and_response(
-    result, doc_id: str, filename: str
-) -> ConvertResponse:
+def _write_meta_and_response(result, doc_id: str, filename: str) -> ConvertResponse:
     expires = datetime.now(timezone.utc) + timedelta(minutes=config.PUBLIC_TTL_MINUTES)
     stats = ConvertStats(
         pages=result.pages,

@@ -129,22 +129,16 @@ async def convert_async(
         ocr_scope,
         filename,
     )
-    return ConvertJobAccepted(
-        job_id=job["job_id"], doc_id=doc_id, status=jobs.QUEUED
-    )
+    return ConvertJobAccepted(job_id=job["job_id"], doc_id=doc_id, status=jobs.QUEUED)
 
 
 @router.get("/convert/jobs/{job_id}", response_model=ConvertJobStatus)
-def convert_job_status(
-    job_id: str, _auth: None = Depends(_require_token)
-) -> ConvertJobStatus:
+def convert_job_status(job_id: str, _auth: None = Depends(_require_token)) -> ConvertJobStatus:
     if not _JOB_ID_RE.match(job_id or ""):
         raise HTTPException(status_code=404, detail="job_id tidak valid.")
     job = jobs.get_job(job_id)
     if job is None:
-        raise HTTPException(
-            status_code=404, detail="Job tidak ditemukan / sudah expired."
-        )
+        raise HTTPException(status_code=404, detail="Job tidak ditemukan / sudah expired.")
     return ConvertJobStatus(
         job_id=job["job_id"],
         doc_id=job["doc_id"],

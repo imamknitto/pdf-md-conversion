@@ -95,9 +95,7 @@ def _from_pdfplumber(plumber_page) -> list[TableResult]:
                 continue
             if any(len(c) > MAX_CELL_CHARS for r in cleaned for c in r):
                 continue
-            results.append(
-                TableResult(bbox=tuple(table.bbox), rows=cleaned, source="pdfplumber")
-            )
+            results.append(TableResult(bbox=tuple(table.bbox), rows=cleaned, source="pdfplumber"))
     return results
 
 

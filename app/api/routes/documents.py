@@ -48,18 +48,14 @@ def list_documents(_auth: None = Depends(_require_token)) -> dict:
 
 
 @router.get("/download/{doc_id}")
-def download_markdown(
-    doc_id: str, _auth: None = Depends(_require_token)
-) -> FileResponse:
+def download_markdown(doc_id: str, _auth: None = Depends(_require_token)) -> FileResponse:
     """Unduh markdown sebagai file text/markdown (tanpa escape JSON)."""
     try:
         path = storage.safe_doc_dir(doc_id) / storage.MARKDOWN_FILENAME
     except ValueError:
         raise HTTPException(status_code=404, detail="doc_id tidak valid.")
     if not path.is_file():
-        raise HTTPException(
-            status_code=404, detail="Markdown tidak ditemukan / sudah expired."
-        )
+        raise HTTPException(status_code=404, detail="Markdown tidak ditemukan / sudah expired.")
     return FileResponse(
         path,
         media_type="text/markdown; charset=utf-8",
@@ -68,17 +64,13 @@ def download_markdown(
 
 
 @router.delete("/documents/{doc_id}")
-def delete_document(
-    doc_id: str, _auth: None = Depends(_require_token)
-) -> dict:
+def delete_document(doc_id: str, _auth: None = Depends(_require_token)) -> dict:
     """Hapus dokumen hasil konversi beserta seluruh artefaknya."""
     try:
         doc_dir = storage.safe_doc_dir(doc_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="doc_id tidak valid.")
     if not (doc_dir / storage.MARKDOWN_FILENAME).is_file():
-        raise HTTPException(
-            status_code=404, detail="Dokumen tidak ditemukan / sudah expired."
-        )
+        raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan / sudah expired.")
     storage.remove_doc(doc_id)
     return {"doc_id": doc_id, "deleted": True}

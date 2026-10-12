@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import BaseModel
 
 
@@ -13,8 +11,8 @@ class ImageMeta(BaseModel):
     width: int
     height: int
     size_bytes: int
-    ocr_text: Optional[str] = None
-    flowchart_mermaid: Optional[str] = None
+    ocr_text: str | None = None
+    flowchart_mermaid: str | None = None
 
 
 class ConvertStats(BaseModel):
@@ -32,7 +30,7 @@ class ConvertResponse(BaseModel):
     stats: ConvertStats
     images: list[ImageMeta]
     warnings: list[str]
-    expires_at: Optional[str] = None
+    expires_at: str | None = None
 
 
 class ConvertJobAccepted(BaseModel):
@@ -43,14 +41,14 @@ class ConvertJobAccepted(BaseModel):
 
 class ConvertJobProgress(BaseModel):
     pages_done: int = 0
-    pages_total: Optional[int] = None
+    pages_total: int | None = None
 
 
 class ConvertJobStatus(BaseModel):
     job_id: str
     doc_id: str
-    filename: Optional[str] = None
+    filename: str | None = None
     status: str  # queued | processing | done | error
-    progress: Optional[ConvertJobProgress] = None
-    result: Optional[ConvertResponse] = None
-    error: Optional[str] = None
+    progress: ConvertJobProgress | None = None
+    result: ConvertResponse | None = None
+    error: str | None = None

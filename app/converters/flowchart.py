@@ -92,8 +92,7 @@ def from_page(page) -> dict:
     nodes: list[dict] = []
     for r in rects:
         inside = [
-            w for w in words
-            if r.contains((w[0] + w[2]) / 2, (w[1] + w[3]) / 2) and w[4].strip()
+            w for w in words if r.contains((w[0] + w[2]) / 2, (w[1] + w[3]) / 2) and w[4].strip()
         ]
         if not inside:
             continue
@@ -156,8 +155,15 @@ def from_page(page) -> dict:
 
 _NUMBERED_RE = re.compile(r"^\s*\(?\d{1,3}\s*[.)\-:]\s*\S.{2,}")
 _FLOW_KEYWORDS = (
-    "apakah", "jika", "maka", "apabila",
-    "start", "end", "mulai", "selesai", "proses",
+    "apakah",
+    "jika",
+    "maka",
+    "apabila",
+    "start",
+    "end",
+    "mulai",
+    "selesai",
+    "proses",
 )
 _FLOW_LABELS = ("y", "n", "ya", "tidak", "yes", "no")
 

@@ -74,7 +74,6 @@ def convert_pdf(
             parts: list[str] = [f"## Page {number}"]
 
             raw_text = page.get_text("text").strip()
-            page_area = abs(page.rect.width * page.rect.height) or 1.0
 
             has_cover_image = False
             for info in page.get_images(full=True):
@@ -108,9 +107,7 @@ def convert_pdf(
                     parts.append(text or "_OCR tidak menghasilkan teks._")
                 else:
                     parts.append("_Halaman scan; OCR dimatikan._")
-                    result.warnings.append(
-                        f"Halaman {number}: halaman scan, OCR dimatikan."
-                    )
+                    result.warnings.append(f"Halaman {number}: halaman scan, OCR dimatikan.")
             else:
                 body = extract_text(page, exclude)
                 if body:
@@ -213,8 +210,7 @@ def convert_pdf(
                             parts.append("> OCR: _tidak menghasilkan teks._")
                 if skipped_nonflow:
                     result.warnings.append(
-                        f"Halaman {number}: {skipped_nonflow} gambar dilewati "
-                        "(bukan flowchart)."
+                        f"Halaman {number}: {skipped_nonflow} gambar dilewati (bukan flowchart)."
                     )
 
             if ocr_images and config.FLOWCHART_ENABLE and not is_scan and not tables:
@@ -250,8 +246,6 @@ def convert_pdf(
     # Persist markdown apa adanya (newline asli) agar klien bisa unduh
     # file langsung tanpa harus parse field JSON `markdown` (yang di
     # JSON memang selalu ter-escape jadi `\n` — itu bukan bug konversi).
-    (dirs["base"] / storage.MARKDOWN_FILENAME).write_text(
-        result.markdown, encoding="utf-8"
-    )
+    (dirs["base"] / storage.MARKDOWN_FILENAME).write_text(result.markdown, encoding="utf-8")
 
     return result
