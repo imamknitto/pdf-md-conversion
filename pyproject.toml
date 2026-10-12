@@ -9,6 +9,7 @@ dependencies = [
     "pillow>=10",
     "pdfplumber>=0.11",
     "pydantic>=2",
+    "pydantic-settings>=2",
     "pymupdf>=1.24",
     "python-multipart>=0.0.9",
     "rapidocr-onnxruntime>=1.2",
