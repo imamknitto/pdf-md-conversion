@@ -6,11 +6,12 @@ from pathlib import Path
 
 import pymupdf
 
-from . import config, storage
-from . import flowchart as flowchart_mod
-from .extractor import extract_text
-from .ocr import ocr_image, ocr_image_boxes_ex
-from .tables import extract_tables, table_to_markdown
+from ..converters import flowchart as flowchart_mod
+from ..converters.extractor import extract_text
+from ..converters.ocr import ocr_image, ocr_image_boxes_ex
+from ..converters.tables import extract_tables, table_to_markdown
+from ..core import config
+from ..storage import storage
 
 
 @dataclass

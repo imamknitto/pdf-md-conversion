@@ -44,7 +44,7 @@ def test_job_invalid_id_format_404(client):
 
 
 def test_job_queue_full_429(client, monkeypatch):
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config, "CONVERT_MAX_QUEUE", 0)
     r = client.post(

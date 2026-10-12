@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import threading
 
-from . import config
+from ..core import config
 
 _lock = threading.Lock()
 _engine = None

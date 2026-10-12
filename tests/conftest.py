@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app import config, jobs
+from app.core import config
 from app.main import app
+from app.services import job_service as jobs
 
 SAMPLE_PDF = Path(__file__).resolve().parent.parent / "sample-doc" / "flowchart-pdf.pdf"
 

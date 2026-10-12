@@ -15,7 +15,7 @@ import threading
 import time
 import uuid
 
-from . import config
+from ..core import config
 
 QUEUED = "queued"
 PROCESSING = "processing"

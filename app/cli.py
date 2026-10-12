@@ -5,8 +5,9 @@ import json
 import sys
 from pathlib import Path
 
-from . import config, storage
-from .converter import convert_pdf
+from .core import config
+from .services.conversion_service import convert_pdf
+from .storage import storage
 
 
 def build_parser() -> argparse.ArgumentParser:

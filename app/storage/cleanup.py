@@ -5,7 +5,7 @@ import logging
 import shutil
 import time
 
-from . import config
+from ..core import config
 
 logger = logging.getLogger("doc-md-conversion.cleanup")
 

@@ -5,7 +5,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from . import config
+from ..core import config
 
 _DOC_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from . import config
+from ..core import config
 
 
 def _label(text: str, limit: int = 40) -> str:

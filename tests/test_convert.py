@@ -45,7 +45,7 @@ def test_convert_rejects_invalid_magic(client):
 
 
 def test_convert_rejects_oversize(client, monkeypatch):
-    from app import config
+    from app.core import config
 
     monkeypatch.setattr(config, "MAX_UPLOAD_BYTES", 10)
     r = client.post(
