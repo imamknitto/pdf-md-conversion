@@ -22,19 +22,33 @@ Artefak gambar disajikan statis dari `public/<doc_id>/` dan dibersihkan otomatis
 
 ```
 app/
-  main.py       FastAPI: POST /convert + /convert/jobs, mount /public, lifespan cleanup
-  config.py     Konstanta & override via environment variable
-  schemas.py    Model request/respons (Pydantic)
-  extractor.py  Ekstraksi teks per halaman (PyMuPDF reflow)
-  tables.py     Deteksi + validasi + render tabel Markdown
-  ocr.py        Wrapper RapidOCR (lazy singleton) + cost guards
-  flowchart.py  Rekonstruksi flowchart vektor lokal → Mermaid (tanpa LLM)
-  jobs.py       Registry in-memory untuk job konversi async
-  converter.py  Orkestrasi pipeline per halaman
-  storage.py    doc_id, path public, sanitasi, tulis file
-  cleanup.py    Sweeper TTL + batas disk
-  cli.py        Entrypoint tanpa API
+  main.py               FastAPI app, lifespan cleanup, CORS, mount /public, include router
+  core/
+    config.py           Settings (pydantic-settings) + override via environment variable
+    security.py         Bearer auth (CONVERTER_API_KEY, aktif hanya bila di-set)
+  api/
+    deps.py             auth, validasi upload, tulis meta + respons
+    routes/
+      health.py         GET /health
+      convert.py        POST /convert (sinkron)
+      jobs.py           POST /convert/jobs + GET /convert/jobs/{job_id}
+      documents.py      GET /documents, GET /download/{doc_id}, DELETE /documents/{doc_id}
+  schemas/              Model request/respons (Pydantic)
+  services/
+    conversion_service.py  Orkestrasi pipeline per halaman
+    job_service.py         Registry in-memory untuk job konversi async
+  converters/
+    extractor.py        Ekstraksi teks per halaman (PyMuPDF reflow)
+    tables.py           Deteksi + validasi + render tabel Markdown
+    ocr.py              Wrapper RapidOCR (lazy singleton) + cost guards
+    flowchart.py        Rekonstruksi flowchart vektor lokal → Mermaid (tanpa LLM)
+  storage/
+    storage.py          doc_id, path public, sanitasi, tulis file
+    cleanup.py          Sweeper TTL + batas disk
+  cli.py                Entrypoint tanpa API
 public/<doc_id>/{images,scans}
+tests/                  Test karakterisasi kontrak API (pytest + httpx)
+scripts/generate_openapi.py  Regenerasi snapshot openapi.json
 ```
 
 ## Setup

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Refaktor struktur berlayer (`app/core`, `app/api`, `app/schemas`,
+  `app/services`, `app/converters`, `app/storage`) tanpa mengubah kontrak
+  eksternal: path endpoint, field form, bentuk respons, status code, auth,
+  nama env var, opsi CLI, dan isi markdown hasil konversi tetap sama.
+- `config.py` kini `pydantic-settings` `BaseSettings` (nama env, default,
+  tipe sama). Nilai env tidak valid tetap jatuh kembali ke default seperti
+  perilaku sebelumnya. Dependensi baru: `pydantic-settings`.
+- `tests/` (pytest + httpx TestClient): test karakterisasi `/health`, auth,
+  `/convert`, `/convert/jobs` + polling, `/documents`, `/download`,
+  `DELETE /documents/{doc_id}`.
+- `scripts/generate_openapi.py` untuk regenerasi snapshot `openapi.json`
+  (opsi `--check`).
+- `pyproject.toml`: config `ruff` (E/F/I/UP) + `pytest`, dev deps
+  (`httpx`, `ruff`).
+
 - Async conversion: `POST /convert/jobs` (field sama seperti `/convert`) →
   `202 {job_id, doc_id}` + `GET /convert/jobs/{job_id}` (status
   `queued|processing|done|error`, progres per halaman, `result`
