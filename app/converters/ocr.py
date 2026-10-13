@@ -1,23 +1,90 @@
 from __future__ import annotations
 
 import io
+import logging
 import threading
+import time
+from enum import Enum
 
 from ..core import config
+
+logger = logging.getLogger("doc-md-conversion.ocr")
 
 _lock = threading.Lock()
 _engine = None
 
+# Circuit breaker state
+class CircuitState(Enum):
+    CLOSED = "closed"      # Normal operation
+    OPEN = "open"          # Failing fast
+    HALF_OPEN = "half_open"  # Testing if service recovered
+
+_circuit_state = CircuitState.CLOSED
+_failure_count = 0
+_last_failure_time = 0.0
+_CIRCUIT_FAILURE_THRESHOLD = 3
+_CIRCUIT_RESET_TIMEOUT = 60.0  # seconds
+
 
 def _get_engine():
-    global _engine
+    global _engine, _circuit_state, _failure_count, _last_failure_time
+
+    # Check circuit breaker
+    with _lock:
+        if _circuit_state == CircuitState.OPEN:
+            # Check if timeout has passed to transition to half-open
+            if time.time() - _last_failure_time >= _CIRCUIT_RESET_TIMEOUT:
+                logger.info("Circuit breaker: transitioning to HALF_OPEN")
+                _circuit_state = CircuitState.HALF_OPEN
+            else:
+                raise RuntimeError("OCR engine circuit breaker OPEN - failing fast")
+
     if _engine is None:
         with _lock:
             if _engine is None:
                 from rapidocr_onnxruntime import RapidOCR
 
                 _engine = RapidOCR()
+                # Reset failure count on successful init
+                _failure_count = 0
+                _circuit_state = CircuitState.CLOSED
     return _engine
+
+
+def _record_failure() -> None:
+    global _failure_count, _last_failure_time, _circuit_state
+    with _lock:
+        _failure_count += 1
+        _last_failure_time = time.time()
+        if _failure_count >= _CIRCUIT_FAILURE_THRESHOLD and _circuit_state != CircuitState.OPEN:
+            _circuit_state = CircuitState.OPEN
+            logger.warning(
+                "OCR engine circuit breaker OPENED after %d consecutive failures",
+                _failure_count,
+            )
+
+
+def _record_success() -> None:
+    global _failure_count, _circuit_state
+    with _lock:
+        if _circuit_state == CircuitState.HALF_OPEN:
+            logger.info("Circuit breaker: CLOSED after successful request")
+            _circuit_state = CircuitState.CLOSED
+        _failure_count = 0
+
+
+def get_circuit_state() -> str:
+    """Get current circuit breaker state (for monitoring)."""
+    return _circuit_state.value
+
+
+def reset_circuit_breaker() -> None:
+    """Manually reset circuit breaker (for testing/admin)."""
+    global _failure_count, _circuit_state, _engine
+    with _lock:
+        _failure_count = 0
+        _circuit_state = CircuitState.CLOSED
+        _engine = None
 
 
 def upscale_safe(image):
@@ -117,7 +184,7 @@ def ocr_image_boxes(image_bytes: bytes) -> list[dict]:
 def ocr_image_boxes_ex(image_bytes: bytes) -> tuple[list[dict], str]:
     """Like ocr_image_boxes but also reports why nothing came back.
 
-    status: 'ok' | 'tiny' | 'broken' | 'empty' (no text found).
+    status: 'ok' | 'tiny' | 'broken' | 'empty' | 'circuit_open' (no text found).
     """
     import numpy as np
 
@@ -127,10 +194,20 @@ def ocr_image_boxes_ex(image_bytes: bytes) -> tuple[list[dict], str]:
     try:
         array = np.array(image)
         result, _ = _get_engine()(array)
+    except RuntimeError as e:
+        if "circuit breaker OPEN" in str(e):
+            _record_failure()
+            return [], "circuit_open"
+        _record_failure()
+        return [], "broken"
     except Exception:
+        _record_failure()
         return [], "broken"
     if not result:
+        _record_failure()
         return [], "empty"
+
+    _record_success()
     boxes: list[dict] = []
     for line in result:
         try:

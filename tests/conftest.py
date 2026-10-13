@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -13,15 +14,25 @@ from app.services import job_service as jobs
 SAMPLE_PDF = Path(__file__).resolve().parent.parent / "sample-doc" / "flowchart-pdf.pdf"
 
 
+def _clear_jobs_db() -> None:
+    """Clear all jobs from SQLite database and reset shutdown state."""
+    db_path = config.PUBLIC_DIR / "jobs.sqlite"
+    if db_path.exists():
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("DELETE FROM jobs")
+            conn.commit()
+    jobs._reset_shutdown_state()
+
+
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("CONVERTER_API_KEY", "")
     monkeypatch.setattr(config, "PUBLIC_DIR", tmp_path / "public")
     (tmp_path / "public").mkdir(parents=True, exist_ok=True)
-    jobs._jobs.clear()
+    _clear_jobs_db()
     with TestClient(app) as c:
         yield c
-    jobs._jobs.clear()
+    _clear_jobs_db()
 
 
 @pytest.fixture()

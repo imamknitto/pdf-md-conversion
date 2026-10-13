@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pymupdf
 from fastapi import HTTPException
 
 from ..core import config
@@ -29,6 +30,15 @@ __all__ = [
 ]
 
 
+def _is_pdf_encrypted(data: bytes) -> bool:
+    """Check if PDF is password protected (encrypted)."""
+    try:
+        doc = pymupdf.open(stream=data, filetype="pdf")
+        return doc.is_encrypted
+    except Exception:
+        return False
+
+
 def _validate_upload(filename: str, content_type: str, data: bytes) -> None:
     if Path(filename).suffix.lower() != ".pdf":
         raise HTTPException(status_code=400, detail="v1 hanya mendukung file PDF.")
@@ -41,6 +51,11 @@ def _validate_upload(filename: str, content_type: str, data: bytes) -> None:
         )
     if not data.startswith(b"%PDF"):
         raise HTTPException(status_code=400, detail="File bukan PDF yang valid.")
+    if _is_pdf_encrypted(data):
+        raise HTTPException(
+            status_code=400,
+            detail="PDF terenkripsi (password protected). Harap hapus password sebelum upload.",
+        )
 
 
 def _write_meta_and_response(result, doc_id: str, filename: str) -> ConvertResponse:
@@ -78,4 +93,5 @@ def _write_meta_and_response(result, doc_id: str, filename: str) -> ConvertRespo
         images=[ImageMeta(**img) for img in result.images],
         warnings=result.warnings,
         expires_at=expires.isoformat(),
+        metadata=result.metadata,
     )

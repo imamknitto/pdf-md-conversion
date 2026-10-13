@@ -155,6 +155,59 @@ Respons JSON:
 
 Gambar dapat diakses di `http://127.0.0.1:8379/public/<doc_id>/images/<filename>`.
 
+## Rate Limiting
+
+API dilindungi rate limiting berbasis IP atau API key:
+
+| Endpoint | Limit | Key |
+|---|---|---|
+| `POST /convert` | 10 req/menit | API key (jika auth) / IP |
+| `POST /convert/jobs` | 20 req/menit | API key (jika auth) / IP |
+
+Response `429 Too Many Requests` dikembalikan saat limit terlampaui.
+
+## Reverse Proxy (nginx) — Wajib di Production
+
+Service ini berjalan single-worker dan tidak handle TLS/buffering besar. **Selalu** letakkan di belakang nginx:
+
+```nginx
+# /etc/nginx/sites-available/doc-md-conversion
+server {
+    listen 8379;
+    server_name converter.example.com;
+
+    # Batasi ukuran body di layer proxy (tambahan dari MAX_UPLOAD_MB)
+    client_max_body_size 35M;
+
+    # Proxy ke service
+    location / {
+        proxy_pass http://127.0.0.1:8379;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;    # PDF besar butuh waktu lama
+        proxy_send_timeout 300s;
+        proxy_request_buffering off; # Streaming upload besar
+    }
+
+    # Health check tanpa auth
+    location /health {
+        proxy_pass http://127.0.0.1:8379/health;
+        access_log off;
+    }
+
+    # Static files (public artifacts) — optional: serve langsung nginx untuk performa
+    location /public/ {
+        alias /data/public/;  # mount volume PUBLIC_DIR
+        expires 1h;
+        add_header Cache-Control "public";
+    }
+}
+```
+
+> **Penting**: `client_max_body_size` di nginx **harus** >= `MAX_UPLOAD_MB` + margin. Default 30MB → set 35M.
+
 ## Docker
 
 ```powershell
@@ -189,7 +242,7 @@ Model RapidOCR diunduh saat request OCR pertama (butuh internet sekali).
 | `OCR_SKIP_BELOW` | `100` | Gambar lebih kecil dari ini (px) dilewati OCR |
 | `OCR_MAX_IMAGES` | `100` | Maks gambar di-OCR per dokumen; sisa disimpan tanpa teks OCR |
 | `CONVERT_JOB_TTL_MINUTES` | `120` | Umur status job async (`POST /convert/jobs`) |
-| `CONVERT_MAX_QUEUE` | `4` | Maks job async belum selesai; selebihnya 429 |
+| `CONVERT_MAX_QUEUE` | `8` | Maks job async belum selesai; selebihnya 429 |
 
 ## Batasan
 

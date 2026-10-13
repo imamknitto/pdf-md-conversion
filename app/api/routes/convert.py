@@ -5,7 +5,9 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ...schemas import ConvertResponse
 from ...services.conversion_service import convert_pdf
@@ -16,9 +18,21 @@ router = APIRouter()
 
 logger = logging.getLogger("doc-md-conversion")
 
+limiter = Limiter(key_func=get_remote_address)
+
+
+def _rate_limit_key(request: Request) -> str:
+    """Rate limit key: API key if authenticated, else IP."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return f"apikey:{auth[7:]}"
+    return get_remote_address(request)
+
 
 @router.post("/convert", response_model=ConvertResponse)
+@limiter.limit("10/minute", key_func=_rate_limit_key)
 async def convert(
+    request: Request,
     file: UploadFile = File(...),
     scan_images: bool = Form(False),
     extract_images: bool = Form(True),
@@ -26,6 +40,11 @@ async def convert(
     ocr_scope: str = Form("all"),
     _auth: None = Depends(_require_token),
 ) -> ConvertResponse:
+    if storage.is_disk_over_limit():
+        raise HTTPException(
+            status_code=507,
+            detail="Ruang penyimpanan penuh, coba lagi nanti.",
+        )
     if ocr_scope not in ("all", "flowchart"):
         raise HTTPException(
             status_code=400,

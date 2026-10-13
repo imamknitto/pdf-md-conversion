@@ -8,7 +8,7 @@ from tests.conftest import sample_bytes
 def _poll_done(client, job_id: str, timeout: float = 60.0) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        r = client.get(f"/convert/jobs/{job_id}")
+        r = client.get(f"/v1/convert/jobs/{job_id}")
         assert r.status_code == 200
         data = r.json()
         if data["status"] in ("done", "error"):
@@ -19,7 +19,7 @@ def _poll_done(client, job_id: str, timeout: float = 60.0) -> dict:
 
 def test_job_submit_and_poll(client):
     r = client.post(
-        "/convert/jobs",
+        "/v1/convert/jobs",
         files={"file": ("flowchart-pdf.pdf", sample_bytes(), "application/pdf")},
     )
     assert r.status_code == 202
@@ -34,12 +34,12 @@ def test_job_submit_and_poll(client):
 
 
 def test_job_unknown_id_404(client):
-    r = client.get("/convert/jobs/" + "a" * 32)
+    r = client.get("/v1/convert/jobs/" + "a" * 32)
     assert r.status_code == 404
 
 
 def test_job_invalid_id_format_404(client):
-    r = client.get("/convert/jobs/bukan-id")
+    r = client.get("/v1/convert/jobs/bukan-id")
     assert r.status_code == 404
 
 
@@ -48,7 +48,7 @@ def test_job_queue_full_429(client, monkeypatch):
 
     monkeypatch.setattr(config, "CONVERT_MAX_QUEUE", 0)
     r = client.post(
-        "/convert/jobs",
+        "/v1/convert/jobs",
         files={"file": ("flowchart-pdf.pdf", sample_bytes(), "application/pdf")},
     )
     assert r.status_code == 429

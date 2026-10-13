@@ -61,7 +61,7 @@ _DEFAULTS: dict[str, Any] = {
     "FLOWCHART_MAX_SHAPES": 200,
     "FLOWCHART_SCORE_MIN": 2,
     "CONVERT_JOB_TTL_MINUTES": 120,
-    "CONVERT_MAX_QUEUE": 4,
+    "CONVERT_MAX_QUEUE": 8,
 }
 
 
@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     FLOWCHART_MAX_SHAPES: int = 200
     FLOWCHART_SCORE_MIN: int = 2
     CONVERT_JOB_TTL_MINUTES: int = 120
-    CONVERT_MAX_QUEUE: int = 4
+    CONVERT_MAX_QUEUE: int = 8
 
     @field_validator(*_INT_FIELDS, mode="before")
     @classmethod

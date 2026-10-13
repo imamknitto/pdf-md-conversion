@@ -50,3 +50,26 @@ def remove_doc(doc_id: str) -> None:
         shutil.rmtree(safe_doc_dir(doc_id), ignore_errors=True)
     except ValueError:
         pass
+
+
+def get_public_dir_usage_mb() -> int:
+    """Return current disk usage of PUBLIC_DIR in MB."""
+    total = 0
+    public_dir = config.PUBLIC_DIR
+    if public_dir.exists():
+        for path in public_dir.rglob("*"):
+            if path.is_file():
+                try:
+                    total += path.stat().st_size
+                except OSError:
+                    pass
+    return total // (1024 * 1024)
+
+
+def is_disk_over_limit(threshold_pct: float = 90.0) -> bool:
+    """Check if PUBLIC_DIR usage exceeds threshold% of PUBLIC_MAX_MB."""
+    if config.PUBLIC_MAX_MB <= 0:
+        return False
+    used_mb = get_public_dir_usage_mb()
+    limit_mb = int(config.PUBLIC_MAX_MB * threshold_pct / 100)
+    return used_mb >= limit_mb

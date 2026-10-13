@@ -6,7 +6,18 @@ import re
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ...schemas import ConvertJobAccepted, ConvertJobProgress, ConvertJobStatus
 from ...services import job_service as jobs
@@ -18,7 +29,17 @@ router = APIRouter()
 
 logger = logging.getLogger("doc-md-conversion")
 
+limiter = Limiter(key_func=get_remote_address)
+
 _JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _rate_limit_key(request: Request) -> str:
+    """Rate limit key: API key if authenticated, else IP."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return f"apikey:{auth[7:]}"
+    return get_remote_address(request)
 
 
 async def _run_convert_job(
@@ -46,6 +67,9 @@ async def _run_convert_job(
     tmp_path = Path(tmp.name)
 
     def on_page(done: int, total: int) -> None:
+        # Check for cancellation before updating progress
+        if jobs.is_cancelled(job_id):
+            raise RuntimeError("Job cancelled")
         jobs.update_job(job_id, pages_done=done, pages_total=total)
 
     try:
@@ -58,7 +82,14 @@ async def _run_convert_job(
             ocr_images=ocr_images,
             ocr_scope=ocr_scope,
             on_page=on_page,
+            check_cancelled=lambda: jobs.is_cancelled(job_id),
         )
+    except RuntimeError as e:
+        if "cancelled" in str(e).lower():
+            logger.info("convert job cancelled job=%s", job_id)
+            jobs.clear_cancelled_flag(job_id)
+            return
+        raise
     except Exception:
         logger.exception("async conversion failed job=%s", job_id)
         storage.remove_doc(doc_id)
@@ -69,6 +100,13 @@ async def _run_convert_job(
             tmp_path.unlink()
         except OSError:
             pass
+
+    # Check cancellation after conversion completes but before saving result
+    if jobs.is_cancelled(job_id):
+        logger.info("convert job cancelled post-conversion job=%s", job_id)
+        storage.remove_doc(doc_id)
+        jobs.clear_cancelled_flag(job_id)
+        return
 
     response = _write_meta_and_response(result, doc_id, filename)
     jobs.set_result(job_id, response.model_dump())
@@ -82,24 +120,35 @@ async def _run_convert_job(
 
 
 @router.post("/convert/jobs", response_model=ConvertJobAccepted, status_code=202)
+@limiter.limit("20/minute", key_func=_rate_limit_key)
 async def convert_async(
+    request: Request,
     background: BackgroundTasks,
     file: UploadFile = File(...),
     scan_images: bool = Form(False),
     extract_images: bool = Form(True),
     ocr_images: bool = Form(False),
     ocr_scope: str = Form("all"),
+    webhook_url: str | None = Form(None),
     _auth: None = Depends(_require_token),
 ) -> ConvertJobAccepted:
     """Accept a conversion as a background job (for large PDFs).
 
     Returns 202 immediately; poll GET /convert/jobs/{job_id}. The heavy
     work runs in a thread so /health stays responsive on the single worker.
+
+    Args:
+        webhook_url: Optional URL to POST job completion callback to.
     """
     if ocr_scope not in ("all", "flowchart"):
         raise HTTPException(
             status_code=400,
             detail='ocr_scope harus "all" atau "flowchart".',
+        )
+    if webhook_url and not webhook_url.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=400,
+            detail="webhook_url harus URL http/https yang valid.",
         )
     filename = file.filename or "upload.pdf"
     data = await file.read()
@@ -112,6 +161,8 @@ async def convert_async(
         "ocr_images": ocr_images,
         "ocr_scope": ocr_scope,
     }
+    if webhook_url:
+        options["webhook_url"] = webhook_url
     job = jobs.create_job(doc_id, filename, options)
     if job is None:
         raise HTTPException(
@@ -151,3 +202,32 @@ def convert_job_status(job_id: str, _auth: None = Depends(_require_token)) -> Co
         result=job.get("result"),
         error=job.get("error"),
     )
+
+
+@router.delete("/convert/jobs/{job_id}", status_code=204)
+def convert_job_cancel(job_id: str, _auth: None = Depends(_require_token)) -> None:
+    """Cancel a queued or processing conversion job.
+
+    - Queued: removed from queue, artifacts cleaned up
+    - Processing: cooperative cancel (worker checks flag per page), artifacts cleaned up
+    - Done/Error: returns 409 (cannot cancel terminal state)
+    - Not found/expired: returns 404
+    """
+    if not _JOB_ID_RE.match(job_id or ""):
+        raise HTTPException(status_code=404, detail="job_id tidak valid.")
+
+    job = jobs.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job tidak ditemukan / sudah expired.")
+
+    if job["status"] in (jobs.DONE, jobs.ERROR):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tidak bisa membatalkan job dengan status {job['status']}.",
+        )
+
+    cancelled = jobs.cancel_job(job_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Job tidak ditemukan / sudah expired.")
+
+    logger.info("convert job cancelled by user job=%s", job_id)

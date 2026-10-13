@@ -31,6 +31,7 @@ class ConvertResponse(BaseModel):
     images: list[ImageMeta]
     warnings: list[str]
     expires_at: str | None = None
+    metadata: dict = {}
 
 
 class ConvertJobAccepted(BaseModel):
@@ -48,7 +49,7 @@ class ConvertJobStatus(BaseModel):
     job_id: str
     doc_id: str
     filename: str | None = None
-    status: str  # queued | processing | done | error
+    status: str  # queued | processing | done | error | cancelled
     progress: ConvertJobProgress | None = None
     result: ConvertResponse | None = None
     error: str | None = None

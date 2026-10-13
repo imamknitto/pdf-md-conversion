@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Rate limit `POST /convert/jobs` dinaikkan `5/minute` → `20/minute`, dan
+  default `CONVERT_MAX_QUEUE` `4` → `8` — menyertai platform yang kini
+  selalu memakai jalur async untuk semua konversi.
+- Fix: ekstraksi gambar embedded memakai `Document.extract_image` (via
+  `page.parent`) — sebelumnya `Page.extract_image` yang tidak ada, sehingga
+  semua gambar ter-skip diam-diam dan OCR gambar tidak pernah jalan.
 - Refaktor struktur berlayer (`app/core`, `app/api`, `app/schemas`,
   `app/services`, `app/converters`, `app/storage`) tanpa mengubah kontrak
   eksternal: path endpoint, field form, bentuk respons, status code, auth,
