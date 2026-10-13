@@ -28,6 +28,9 @@ class PageContext:
     tables: list
     exclude_rects: list
     recurring_xrefs: set[int]
+    words: list = field(default_factory=list)
+    image_infos: list = field(default_factory=list)
+    drawings: list | None = None
 
 
 @dataclass
@@ -76,6 +79,16 @@ def _max_image_ratio(page: pymupdf.Page, xref: int) -> float:
     return max(abs(r.width * r.height) for r in rects) / page_area
 
 
+def _page_drawings(ctx: PageContext) -> list:
+    """Vector drawings for a page, fetched at most once per page."""
+    if ctx.drawings is None:
+        try:
+            ctx.drawings = ctx.page.get_drawings() or []
+        except Exception:
+            ctx.drawings = []
+    return ctx.drawings
+
+
 def extract_pdf_metadata(doc: pymupdf.Document) -> dict:
     """Extract PDF metadata (title, author, dates, etc.)."""
     try:
@@ -107,13 +120,22 @@ def analyze_page(
     recurring: set[int],
 ) -> PageContext:
     """Stage 1: Analyze page - detect scan, tables, recurring images."""
-    raw_text = page.get_text("text").strip()
+    words = page.get_text("words")
+    if words:
+        raw_text = " ".join(w[4] for w in words).strip()
+    else:
+        raw_text = page.get_text("text").strip()
 
-    has_cover_image = False
+    image_infos: list[tuple[int, float]] = []
+    seen_xrefs: set[int] = set()
     for info in page.get_images(full=True):
-        if _max_image_ratio(page, info[0]) >= config.PAGE_COVERAGE:
-            has_cover_image = True
-            break
+        xref = info[0]
+        if xref in seen_xrefs:
+            continue
+        seen_xrefs.add(xref)
+        image_infos.append((xref, _max_image_ratio(page, xref)))
+
+    has_cover_image = any(ratio >= config.PAGE_COVERAGE for _, ratio in image_infos)
     is_scan = len(raw_text) < config.MIN_TEXT_CHARS and has_cover_image
 
     tables = extract_tables(page, plumber_page)
@@ -129,6 +151,8 @@ def analyze_page(
         tables=tables,
         exclude_rects=exclude,
         recurring_xrefs=recurring,
+        words=words,
+        image_infos=image_infos,
     )
 
 
@@ -167,7 +191,7 @@ def process_text_page(ctx: PageContext) -> PageResult:
     """Stage 2b: Process text page - extract text (reflow)."""
     result = PageResult()
     if not ctx.is_scan:
-        body = extract_text(ctx.page, ctx.exclude_rects)
+        body = extract_text(ctx.page, ctx.exclude_rects, ctx.words)
         if body:
             result.markdown_parts.append(body)
     return result
@@ -202,20 +226,14 @@ def process_images(
     if not extract_images:
         return result, ocr_done, ocr_capped, ocr_tiny, image_cap_hit, skipped_nonflow
 
-    seen: set[int] = set()
     img_no = 0
 
-    for info in ctx.page.get_images(full=True):
-        xref = info[0]
-        if xref in seen:
-            continue
-        seen.add(xref)
-
+    for xref, ratio in ctx.image_infos:
         if xref in ctx.recurring_xrefs:
             result.images_skipped += 1
             continue
 
-        if _max_image_ratio(ctx.page, xref) < config.IMAGE_MIN_AREA_RATIO:
+        if ratio < config.IMAGE_MIN_AREA_RATIO:
             result.images_skipped += 1
             continue
 
@@ -280,6 +298,7 @@ def process_images(
                             boxes,
                             page=ctx.page,
                             img_rect=rects[0] if rects else None,
+                            drawings=_page_drawings(ctx),
                         )
                     except Exception:
                         verdict = {"yes": False}
@@ -317,7 +336,9 @@ def process_page_flowchart(
 
     if ocr_images and config.FLOWCHART_ENABLE and not ctx.is_scan and not ctx.tables:
         try:
-            fc_page = flowchart_mod.from_page(ctx.page)
+            fc_page = flowchart_mod.from_page(
+                ctx.page, drawings=_page_drawings(ctx), words=ctx.words
+            )
         except Exception:
             fc_page = None
         if fc_page and len(fc_page.get("nodes", [])) >= 2:

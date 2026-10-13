@@ -8,15 +8,19 @@ def _fallback_text(page: pymupdf.Page) -> str:
     return "\n".join(" ".join(line.split()) for line in text.splitlines() if line.strip())
 
 
-def extract_text(page: pymupdf.Page, exclude_rects: list | None = None) -> str:
+def extract_text(
+    page: pymupdf.Page, exclude_rects: list | None = None, words: list | None = None
+) -> str:
     """Extract page text via word reflow, skipping words inside excluded rects.
 
     PyMuPDF's plain ``get_text`` emits one word per line on justified/stretched
     PDFs. Grouping the word list by (block, line) and sorting by x restores
-    proper spacing and line order.
+    proper spacing and line order. Pass ``words`` to reuse a page's already
+    extracted word list (avoids a second parse).
     """
     rects = [pymupdf.Rect(r) for r in (exclude_rects or [])]
-    words = page.get_text("words")
+    if words is None:
+        words = page.get_text("words")
     if not words:
         return _fallback_text(page)
 

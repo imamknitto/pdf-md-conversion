@@ -67,16 +67,22 @@ def _nearest_node(nodes: list[dict], x: float, y: float, tol: float = 40.0) -> i
     return best
 
 
-def from_page(page) -> dict:
-    """Ekstrak flowchart dari halaman PDF vektor (drawings + text words)."""
-    try:
-        words = page.get_text("words") or []
-    except Exception:
-        words = []
-    try:
-        drawings = page.get_drawings() or []
-    except Exception:
-        drawings = []
+def from_page(page, drawings=None, words=None) -> dict:
+    """Ekstrak flowchart dari halaman PDF vektor (drawings + text words).
+
+    ``drawings`` / ``words`` dapat diberikan oleh pemanggil untuk menghindari
+    parsing ulang halaman yang sama (mis. dipakai bersama is_flowchart()).
+    """
+    if words is None:
+        try:
+            words = page.get_text("words") or []
+        except Exception:
+            words = []
+    if drawings is None:
+        try:
+            drawings = page.get_drawings() or []
+        except Exception:
+            drawings = []
     drawings = drawings[: config.FLOWCHART_MAX_SHAPES]
 
     rects = []
@@ -172,12 +178,14 @@ def is_flowchart(
     boxes: list[dict],
     page=None,
     img_rect=None,
+    drawings=None,
 ) -> dict:
     """Nilai apakah gambar layak dianggap diagram/flowchart.
 
     Skor gabungan sinyal teks OCR + geometri vektor halaman. Lolos bila
     ``score >= config.FLOWCHART_SCORE_MIN``. Tidak pernah raise (gagal
     hitung -> ``yes=False``) agar aman dipakai di pipeline konversi.
+    ``drawings`` dapat diberikan agar ``page.get_drawings()`` tidak diulang.
     """
     score = 0
     strong = 0
@@ -205,10 +213,11 @@ def is_flowchart(
             score += 1
             reasons.append(f"{len(texts)} baris teks")
         if page is not None and img_rect is not None:
-            try:
-                drawings = page.get_drawings() or []
-            except Exception:
-                drawings = []
+            if drawings is None:
+                try:
+                    drawings = page.get_drawings() or []
+                except Exception:
+                    drawings = []
             overlap = 0
             for d in drawings[: config.FLOWCHART_MAX_SHAPES]:
                 try:

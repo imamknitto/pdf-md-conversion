@@ -237,6 +237,7 @@ Model RapidOCR diunduh saat request OCR pertama (butuh internet sekali).
 | `IMAGE_MIN_AREA_RATIO` | `0.01` | Luas minimum gambar agar disimpan |
 | `MAX_IMAGE_MB` | `10` | Batas ukuran satu gambar |
 | `MAX_IMAGES_PER_DOC` | `200` | Batas jumlah gambar per dokumen |
+| `TABLE_FAST_MODE` | `false` | `true` = lewati deteksi tabel pdfplumber bila PyMuPDF sudah menemukan tabel di halaman itu (hemat CPU; bisa melewatkan tabel kedua di halaman sama) |
 | `OCR_DPI` | `200` | Resolusi render untuk OCR |
 | `OCR_MAX_SIDE` | `1600` | Gambar OCR di-downscale ke sisi terpanjang ini (hemat CPU) |
 | `OCR_SKIP_BELOW` | `100` | Gambar lebih kecil dari ini (px) dilewati OCR |

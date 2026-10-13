@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Optimasi CPU konversi (tanpa mengubah kontrak API/markdown): metadata gambar
+  tiap halaman (`get_images`/`get_image_rects`) dan `get_text("words")` dihitung
+  sekali per halaman lalu dipakai ulang lintas stage; `get_drawings()` halaman
+  di-cache dan dibagi ke `is_flowchart()` + `from_page()` (param `drawings`/
+  `words` opsional). Config baru `TABLE_FAST_MODE` (default `false` = perilaku
+  sekarang): bila `true`, deteksi tabel pdfplumber dilewati untuk halaman yang
+  sudah punya tabel valid dari PyMuPDF.
 - Rate limit `POST /convert/jobs` dinaikkan `5/minute` → `20/minute`, dan
   default `CONVERT_MAX_QUEUE` `4` → `8` — menyertai platform yang kini
   selalu memakai jalur async untuk semua konversi.

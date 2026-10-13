@@ -60,6 +60,7 @@ _DEFAULTS: dict[str, Any] = {
     "FLOWCHART_Y_TOL": 10.0,
     "FLOWCHART_MAX_SHAPES": 200,
     "FLOWCHART_SCORE_MIN": 2,
+    "TABLE_FAST_MODE": False,
     "CONVERT_JOB_TTL_MINUTES": 120,
     "CONVERT_MAX_QUEUE": 8,
 }
@@ -97,6 +98,7 @@ class Settings(BaseSettings):
     FLOWCHART_Y_TOL: float = 10.0
     FLOWCHART_MAX_SHAPES: int = 200
     FLOWCHART_SCORE_MIN: int = 2
+    TABLE_FAST_MODE: bool = False
     CONVERT_JOB_TTL_MINUTES: int = 120
     CONVERT_MAX_QUEUE: int = 8
 
@@ -120,11 +122,11 @@ class Settings(BaseSettings):
         except (TypeError, ValueError):
             return _DEFAULTS[info.field_name]
 
-    @field_validator("FLOWCHART_ENABLE", mode="before")
+    @field_validator("FLOWCHART_ENABLE", "TABLE_FAST_MODE", mode="before")
     @classmethod
-    def _lenient_bool(cls, v: Any) -> Any:
+    def _lenient_bool(cls, v: Any, info: ValidationInfo) -> Any:
         if v is None:
-            return True
+            return _DEFAULTS[info.field_name]
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in _BOOL_TRUE
