@@ -7,6 +7,9 @@
   `pdf-md-conversion.*`, `/health.service`, env `CONVERTER_API_KEY` →
   `PDF_MD_CONVERTER_API_KEY`, image Docker, service/container/volume compose.
   Konsumen/deploy lama wajib menyesuaikan token env + cek `service`.
+- Fix Docker: tambah `libglib2.0-0t` (opencv-python via RapidOCR gagal import
+  tanpa ini → semua OCR `broken` + circuit breaker terbuka), HEALTHCHECK ke
+  `/v1/health`, dan exception engine OCR kini masuk log.
 
 - Optimasi CPU konversi (tanpa mengubah kontrak API/markdown): metadata gambar
   tiap halaman (`get_images`/`get_image_rects`) dan `get_text("words")` dihitung
