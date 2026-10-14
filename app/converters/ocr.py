@@ -198,9 +198,11 @@ def ocr_image_boxes_ex(image_bytes: bytes) -> tuple[list[dict], str]:
         if "circuit breaker OPEN" in str(e):
             _record_failure()
             return [], "circuit_open"
+        logger.exception("OCR engine runtime error")
         _record_failure()
         return [], "broken"
     except Exception:
+        logger.exception("OCR engine failed")
         _record_failure()
         return [], "broken"
     if not result:

@@ -1,7 +1,11 @@
 # Kontrak API — pdf-md-conversion
 
-Base URL: `http://127.0.0.1:8379` (default lokal). Semua endpoint di bawah `/v1`,
-kecuali file statis di `/public/*`.
+Base URL: `http://127.0.0.1:8379` (default lokal). Semua endpoint berada di
+bawah `/v1`.
+
+Converter tidak menyimpan atau melayani artefak konversi. Nilai `/public/...`
+adalah URL relatif untuk consumer. Consumer menyimpan `markdown`, decode
+`images[].data_base64`, lalu melayani URL tersebut.
 
 ## Konvensi umum
 
@@ -71,7 +75,8 @@ Contoh respons `200`:
     { "page": 3, "kind": "image", "filename": "page-003-image-001.jpeg",
       "url": "/public/9f3c2e1a4b5c4d6e7f8090a1b2c3d4e5/images/page-003-image-001.jpeg",
       "width": 1268, "height": 658, "size_bytes": 63488,
-      "ocr_text": null, "flowchart_mermaid": null }
+      "ocr_text": null, "flowchart_mermaid": null,
+      "data_base64": "/9j/4AAQSkZJRgABAQ..." }
   ],
   "warnings": [],
   "expires_at": "2026-10-14T09:00:00+00:00",
@@ -81,8 +86,13 @@ Contoh respons `200`:
 
 Catatan field:
 
-- `markdown` ter-escape (`\n`) — normal JSON, pakai JSON parse; atau ambil file mentah via `markdown_url` (prefix dengan base URL service).
+- `markdown` ter-escape (`\n`) sebagai JSON normal. Consumer menyimpannya
+  sebagai `doc.md`.
+- `markdown_url` dan `images[].url` adalah path relatif yang harus dilayani
+  consumer; jangan prefix dengan base URL converter.
 - `images[].kind`: `image` (embedded) atau `scan` (halaman scan).
+- `images[].data_base64`: byte gambar/scan dalam Base64. Decode dan simpan di
+  path `images[].url`; jangan teruskan field ini ke browser setelah tersimpan.
 - `images[].ocr_text`: teks OCR bila `ocr_images=true`; `flowchart_mermaid`: diagram Mermaid bila gambar terdeteksi flowchart.
 - `metadata`: metadata PDF (`title`, `author`, `subject`, `keywords`, `creator`, `producer`, `creationDate`, `modDate`); `{}` bila kosong.
 - `warnings`: mis. gambar dilewati karena melebihi cap OCR.
@@ -96,7 +106,6 @@ Error:
 | `413` | File > 30 MB |
 | `429` | Rate limit |
 | `500` | Gagal memproses PDF |
-| `507` | Disk penyimpanan penuh |
 
 ## 3. POST /v1/convert/jobs
 
@@ -156,37 +165,17 @@ curl.exe -X DELETE "http://127.0.0.1:8379/v1/convert/jobs/<job_id>" `
 
 ## 6. GET /v1/documents
 
-Daftar dokumen yang masih tersedia (terbaru dulu). Contoh respons `200`:
+Stub legacy. Converter tidak menyimpan artefak; respons selalu:
 
 ```json
-{
-  "documents": [
-    {
-      "doc_id": "9f3c2e1a4b5c4d6e7f8090a1b2c3d4e5",
-      "markdown_url": "/public/9f3c2e1a4b5c4d6e7f8090a1b2c3d4e5/doc.md",
-      "filename": "dokumen.pdf",
-      "stats": { "pages": 12, "scanned_pages": 0, "tables": 2, "images_kept": 5, "images_skipped": 3 },
-      "warnings": [],
-      "created_at": "2026-10-14T08:00:00+00:00",
-      "expires_at": "2026-10-14T09:00:00+00:00"
-    }
-  ]
-}
+{ "documents": [] }
 ```
 
 Error: `401` (auth).
 
 ## 7. GET /v1/download/{doc_id}
 
-Unduh markdown sebagai file `text/markdown` (tanpa escape JSON),
-nama file `<doc_id>.md`. Contoh:
-
-```powershell
-curl.exe "http://127.0.0.1:8379/v1/download/9f3c2e1a4b5c4d6e7f8090a1b2c3d4e5" `
-  -H "Authorization: Bearer $env:PDF_MD_CONVERTER_API_KEY" -o dokumen.md
-```
-
-Error: `401` (auth), `404` (`doc_id` tidak valid / tidak ada / expired).
+Stub legacy. Selalu `404`. Gunakan field `markdown` dari response konversi.
 
 ## 8. Webhook job (callback)
 
@@ -209,18 +198,14 @@ saat job `done`/`error` (dengan retry + backoff). Contoh payload:
 
 ## 9. DELETE /v1/documents/{doc_id}
 
-Hapus dokumen + semua artefaknya. Contoh respons `200`:
+Stub legacy. Selalu `404`; penghapusan artefak menjadi tanggung jawab consumer.
 
-```json
-{ "doc_id": "9f3c2e1a4b5c4d6e7f8090a1b2c3d4e5", "deleted": true }
-```
+## 10. Handoff artefak
 
-Error: `401` (auth), `404` (`doc_id` tidak valid / tidak ada / expired).
+Untuk setiap hasil sinkron atau job async berstatus `done`, consumer:
 
-## 10. File statis
-
-- `GET /public/{doc_id}/doc.md` → markdown mentah.
-- `GET /public/{doc_id}/images/<file>` → gambar hasil ekstraksi.
-
-Tanpa auth (capability URL — `doc_id` tak tertebak). Prefix path relatif
-(`/public/…`) dengan base URL service.
+1. Menulis `markdown` ke path `markdown_url`.
+2. Decode setiap `images[].data_base64`.
+3. Menulis byte hasil decode ke path `images[].url`.
+4. Menghapus `data_base64` sebelum response diteruskan ke browser.
+5. Menghapus artefak berdasarkan `expires_at`.

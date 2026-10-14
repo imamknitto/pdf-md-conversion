@@ -16,7 +16,8 @@ SAMPLE_PDF = Path(__file__).resolve().parent.parent / "sample-doc" / "flowchart-
 
 def _clear_jobs_db() -> None:
     """Clear all jobs from SQLite database and reset shutdown state."""
-    db_path = config.PUBLIC_DIR / "jobs.sqlite"
+    jobs._DB_PATH = None
+    db_path = config.DATA_DIR / "jobs.sqlite"
     if db_path.exists():
         with sqlite3.connect(db_path) as conn:
             conn.execute("DELETE FROM jobs")
@@ -27,8 +28,9 @@ def _clear_jobs_db() -> None:
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("PDF_MD_CONVERTER_API_KEY", "")
-    monkeypatch.setattr(config, "PUBLIC_DIR", tmp_path / "public")
-    (tmp_path / "public").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    (tmp_path / "data").mkdir(parents=True, exist_ok=True)
+    jobs._DB_PATH = None
     _clear_jobs_db()
     with TestClient(app) as c:
         yield c

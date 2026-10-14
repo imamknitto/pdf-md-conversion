@@ -5,7 +5,6 @@ import json
 import sys
 from pathlib import Path
 
-from .core import config
 from .services.conversion_service import convert_pdf
 from .storage import storage
 
@@ -28,7 +27,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Cakupan OCR gambar (default: all)",
     )
     parser.add_argument("--no-images", action="store_true", help="Jangan ekstrak gambar")
-    parser.add_argument("--public-dir", type=Path, default=None, help="Override folder public")
     parser.add_argument("--json", action="store_true", help="Cetak metadata JSON ke stdout")
     return parser
 
@@ -42,9 +40,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.input.suffix.lower() != ".pdf":
         print("error: v1 hanya mendukung PDF", file=sys.stderr)
         return 2
-
-    if args.public_dir is not None:
-        config.PUBLIC_DIR = args.public_dir
 
     output = args.output or args.input.with_suffix(".md")
     doc_id = storage.new_doc_id()

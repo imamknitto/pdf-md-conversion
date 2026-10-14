@@ -40,11 +40,6 @@ async def convert(
     ocr_scope: str = Form("all"),
     _auth: None = Depends(_require_token),
 ) -> ConvertResponse:
-    if storage.is_disk_over_limit():
-        raise HTTPException(
-            status_code=507,
-            detail="Ruang penyimpanan penuh, coba lagi nanti.",
-        )
     if ocr_scope not in ("all", "flowchart"):
         raise HTTPException(
             status_code=400,

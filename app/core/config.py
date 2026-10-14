@@ -13,8 +13,6 @@ _BOOL_TRUE = {"1", "true", "yes", "on"}
 _INT_FIELDS = {
     "MAX_UPLOAD_MB",
     "PUBLIC_TTL_MINUTES",
-    "PUBLIC_MAX_MB",
-    "CLEANUP_INTERVAL_MINUTES",
     "MIN_TEXT_CHARS",
     "MAX_IMAGE_MB",
     "MAX_IMAGES_PER_DOC",
@@ -41,8 +39,6 @@ _FLOAT_FIELDS = {
 _DEFAULTS: dict[str, Any] = {
     "MAX_UPLOAD_MB": 30,
     "PUBLIC_TTL_MINUTES": 60,
-    "PUBLIC_MAX_MB": 1024,
-    "CLEANUP_INTERVAL_MINUTES": 10,
     "MIN_TEXT_CHARS": 50,
     "PAGE_COVERAGE": 0.5,
     "RECURRING_XREF_RATIO": 0.5,
@@ -77,10 +73,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
     MAX_UPLOAD_MB: int = 30
-    PUBLIC_DIR: Path = BASE_DIR / "public"
+    # Runtime data (async job registry: jobs.sqlite). Not served over HTTP.
+    DATA_DIR: Path = BASE_DIR / "data"
     PUBLIC_TTL_MINUTES: int = 60
-    PUBLIC_MAX_MB: int = 1024
-    CLEANUP_INTERVAL_MINUTES: int = 10
     MIN_TEXT_CHARS: int = 50
     PAGE_COVERAGE: float = 0.5
     RECURRING_XREF_RATIO: float = 0.5
@@ -131,20 +126,16 @@ class Settings(BaseSettings):
             return v
         return str(v).strip().lower() in _BOOL_TRUE
 
-    @field_validator("PUBLIC_DIR", mode="before")
+    @field_validator("DATA_DIR", mode="before")
     @classmethod
     def _lenient_path(cls, v: Any) -> Any:
         if v is None or (isinstance(v, str) and v.strip() == ""):
-            return BASE_DIR / "public"
+            return BASE_DIR / "data"
         return v
 
     @property
     def MAX_UPLOAD_BYTES(self) -> int:
         return self.MAX_UPLOAD_MB * 1024 * 1024
-
-    @property
-    def PUBLIC_MAX_BYTES(self) -> int:
-        return self.PUBLIC_MAX_MB * 1024 * 1024
 
     @property
     def MAX_IMAGE_BYTES(self) -> int:

@@ -13,6 +13,7 @@ class ImageMeta(BaseModel):
     size_bytes: int
     ocr_text: str | None = None
     flowchart_mermaid: str | None = None
+    data_base64: str | None = None
 
 
 class ConvertStats(BaseModel):

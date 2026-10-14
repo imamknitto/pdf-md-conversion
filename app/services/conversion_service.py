@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -156,7 +157,7 @@ def analyze_page(
     )
 
 
-def process_scan_page(ctx: PageContext, doc_id: str, dirs: dict, scan_images: bool) -> PageResult:
+def process_scan_page(ctx: PageContext, doc_id: str, scan_images: bool) -> PageResult:
     """Stage 2a: Process scan page - OCR full page if enabled."""
     result = PageResult()
     number = ctx.number
@@ -167,7 +168,6 @@ def process_scan_page(ctx: PageContext, doc_id: str, dirs: dict, scan_images: bo
             pix = ctx.page.get_pixmap(dpi=config.OCR_DPI)
             data = pix.tobytes("png")
             filename = f"page-{number:03d}.png"
-            storage.write_bytes(dirs["scans"], filename, data)
             result.images.append(
                 {
                     "page": number,
@@ -177,6 +177,7 @@ def process_scan_page(ctx: PageContext, doc_id: str, dirs: dict, scan_images: bo
                     "width": pix.width,
                     "height": pix.height,
                     "size_bytes": len(data),
+                    "data_base64": base64.b64encode(data).decode("ascii"),
                 }
             )
             text = ocr_image(data)
@@ -209,7 +210,6 @@ def process_tables(ctx: PageContext) -> PageResult:
 def process_images(
     ctx: PageContext,
     doc_id: str,
-    dirs: dict,
     extract_images: bool,
     ocr_images: bool,
     ocr_scope: str,
@@ -260,7 +260,6 @@ def process_images(
         img_no += 1
         ext = data["ext"]
         filename = f"page-{number:03d}-image-{img_no:03d}.{ext}"
-        storage.write_bytes(dirs["images"], filename, data["image"])
         result.images_kept += 1
 
         entry: dict = {
@@ -273,6 +272,7 @@ def process_images(
             "size_bytes": len(data["image"]),
             "ocr_text": None,
             "flowchart_mermaid": None,
+            "data_base64": base64.b64encode(data["image"]).decode("ascii"),
         }
         result.images.append(entry)
         result.markdown_parts.append(f"![Gambar halaman {number}]({entry['url']})")
@@ -362,9 +362,8 @@ def finalize_result(
     result: ConvertResult,
     ocr_capped: int,
     ocr_tiny: int,
-    dirs: dict,
 ) -> ConvertResult:
-    """Stage 7: Finalize - add summary warnings, persist markdown."""
+    """Stage 7: Finalize - add summary warnings."""
     if ocr_capped:
         result.warnings.append(
             f"Batas {config.OCR_MAX_IMAGES} gambar OCR tercapai; "
@@ -375,7 +374,6 @@ def finalize_result(
             f"{ocr_tiny} gambar terlalu kecil untuk OCR, disimpan tanpa teks OCR."
         )
 
-    (dirs["base"] / storage.MARKDOWN_FILENAME).write_text(result.markdown, encoding="utf-8")
     return result
 
 
@@ -396,7 +394,6 @@ def convert_pdf(
             Called at start of each page and before heavy operations.
     """
     result = ConvertResult(doc_id=doc_id, markdown="")
-    dirs = storage.ensure_doc_dirs(doc_id)
 
     import pdfplumber
 
@@ -425,7 +422,7 @@ def convert_pdf(
 
             # Stage 2a/2b: Scan or Text
             page_results: list[PageResult] = []
-            page_results.append(process_scan_page(ctx, doc_id, dirs, scan_images))
+            page_results.append(process_scan_page(ctx, doc_id, scan_images))
             page_results.append(process_text_page(ctx))
 
             # Stage 3: Tables
@@ -445,7 +442,6 @@ def convert_pdf(
             ) = process_images(
                 ctx,
                 doc_id,
-                dirs,
                 extract_images,
                 ocr_images,
                 ocr_scope,
@@ -479,4 +475,4 @@ def convert_pdf(
                     pass
 
     # Stage 7: Finalize
-    return finalize_result(result, ocr_capped, ocr_tiny, dirs)
+    return finalize_result(result, ocr_capped, ocr_tiny)
