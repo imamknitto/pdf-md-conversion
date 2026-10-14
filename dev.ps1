@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 Push-Location $PSScriptRoot
 try {
-  # Load .env (kalau ada) agar CONVERTER_API_KEY dkk ikut kebaca.
+  # Load .env (kalau ada) agar PDF_MD_CONVERTER_API_KEY dkk ikut kebaca.
   $envFile = Join-Path $PSScriptRoot ".env"
   if (Test-Path -LiteralPath $envFile) {
     foreach ($line in (Get-Content -LiteralPath $envFile)) {

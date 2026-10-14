@@ -1,14 +1,14 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "doc-md-conversion",
+    "title": "pdf-md-conversion",
     "version": "0.1.0"
   },
   "paths": {
-    "/health": {
+    "/v1/health": {
       "get": {
         "summary": "Health",
-        "operationId": "health_health_get",
+        "operationId": "health_v1_health_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -17,7 +17,7 @@
                 "schema": {
                   "additionalProperties": true,
                   "type": "object",
-                  "title": "Response Health Health Get"
+                  "title": "Response Health V1 Health Get"
                 }
               }
             }
@@ -25,11 +25,11 @@
         }
       }
     },
-    "/documents": {
+    "/v1/documents": {
       "get": {
         "summary": "List Documents",
         "description": "Daftar dokumen hasil konversi yang masih tersedia (terbaru dulu).",
-        "operationId": "list_documents_documents_get",
+        "operationId": "list_documents_v1_documents_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -38,7 +38,7 @@
                 "schema": {
                   "additionalProperties": true,
                   "type": "object",
-                  "title": "Response List Documents Documents Get"
+                  "title": "Response List Documents V1 Documents Get"
                 }
               }
             }
@@ -51,11 +51,11 @@
         ]
       }
     },
-    "/download/{doc_id}": {
+    "/v1/download/{doc_id}": {
       "get": {
         "summary": "Download Markdown",
         "description": "Unduh markdown sebagai file text/markdown (tanpa escape JSON).",
-        "operationId": "download_markdown_download__doc_id__get",
+        "operationId": "download_markdown_v1_download__doc_id__get",
         "security": [
           {
             "HTTPBearer": []
@@ -94,11 +94,11 @@
         }
       }
     },
-    "/documents/{doc_id}": {
+    "/v1/documents/{doc_id}": {
       "delete": {
         "summary": "Delete Document",
         "description": "Hapus dokumen hasil konversi beserta seluruh artefaknya.",
-        "operationId": "delete_document_documents__doc_id__delete",
+        "operationId": "delete_document_v1_documents__doc_id__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -123,7 +123,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Delete Document Documents  Doc Id  Delete"
+                  "title": "Response Delete Document V1 Documents  Doc Id  Delete"
                 }
               }
             }
@@ -141,15 +141,15 @@
         }
       }
     },
-    "/convert": {
+    "/v1/convert": {
       "post": {
         "summary": "Convert",
-        "operationId": "convert_convert_post",
+        "operationId": "convert_v1_convert_post",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_convert_convert_post"
+                "$ref": "#/components/schemas/Body_convert_v1_convert_post"
               }
             }
           },
@@ -184,16 +184,16 @@
         ]
       }
     },
-    "/convert/jobs": {
+    "/v1/convert/jobs": {
       "post": {
         "summary": "Convert Async",
-        "description": "Accept a conversion as a background job (for large PDFs).\n\nReturns 202 immediately; poll GET /convert/jobs/{job_id}. The heavy\nwork runs in a thread so /health stays responsive on the single worker.",
-        "operationId": "convert_async_convert_jobs_post",
+        "description": "Accept a conversion as a background job (for large PDFs).\n\nReturns 202 immediately; poll GET /convert/jobs/{job_id}. The heavy\nwork runs in a thread so /health stays responsive on the single worker.\n\nArgs:\n    webhook_url: Optional URL to POST job completion callback to.",
+        "operationId": "convert_async_v1_convert_jobs_post",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_convert_async_convert_jobs_post"
+                "$ref": "#/components/schemas/Body_convert_async_v1_convert_jobs_post"
               }
             }
           },
@@ -228,10 +228,10 @@
         ]
       }
     },
-    "/convert/jobs/{job_id}": {
+    "/v1/convert/jobs/{job_id}": {
       "get": {
         "summary": "Convert Job Status",
-        "operationId": "convert_job_status_convert_jobs__job_id__get",
+        "operationId": "convert_job_status_v1_convert_jobs__job_id__get",
         "security": [
           {
             "HTTPBearer": []
@@ -270,12 +270,48 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Convert Job Cancel",
+        "description": "Cancel a queued or processing conversion job.\n\n- Queued: removed from queue, artifacts cleaned up\n- Processing: cooperative cancel (worker checks flag per page), artifacts cleaned up\n- Done/Error: returns 409 (cannot cancel terminal state)\n- Not found/expired: returns 404",
+        "operationId": "convert_job_cancel_v1_convert_jobs__job_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
   "components": {
     "schemas": {
-      "Body_convert_async_convert_jobs_post": {
+      "Body_convert_async_v1_convert_jobs_post": {
         "properties": {
           "file": {
             "type": "string",
@@ -301,15 +337,26 @@
             "type": "string",
             "title": "Ocr Scope",
             "default": "all"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
           }
         },
         "type": "object",
         "required": [
           "file"
         ],
-        "title": "Body_convert_async_convert_jobs_post"
+        "title": "Body_convert_async_v1_convert_jobs_post"
       },
-      "Body_convert_convert_post": {
+      "Body_convert_v1_convert_post": {
         "properties": {
           "file": {
             "type": "string",
@@ -341,7 +388,7 @@
         "required": [
           "file"
         ],
-        "title": "Body_convert_convert_post"
+        "title": "Body_convert_v1_convert_post"
       },
       "ConvertJobAccepted": {
         "properties": {
@@ -494,6 +541,12 @@
               }
             ],
             "title": "Expires At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "default": {}
           }
         },
         "type": "object",

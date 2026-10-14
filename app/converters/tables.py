@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 import pymupdf
 
+from ..core import config
+
 MAX_CELL_CHARS = 300
 
 
@@ -95,15 +97,22 @@ def _from_pdfplumber(plumber_page) -> list[TableResult]:
                 continue
             if any(len(c) > MAX_CELL_CHARS for r in cleaned for c in r):
                 continue
-            results.append(
-                TableResult(bbox=tuple(table.bbox), rows=cleaned, source="pdfplumber")
-            )
+            results.append(TableResult(bbox=tuple(table.bbox), rows=cleaned, source="pdfplumber"))
     return results
 
 
 def extract_tables(page: pymupdf.Page, plumber_page=None) -> list[TableResult]:
-    """Detect tables from PyMuPDF and pdfplumber, validated and de-duplicated."""
-    candidates = _from_pymupdf(page) + _from_pdfplumber(plumber_page)
+    """Detect tables from PyMuPDF and pdfplumber, validated and de-duplicated.
+
+    When ``TABLE_FAST_MODE`` is enabled, pdfplumber (the costlier engine) is
+    only consulted for pages where PyMuPDF found no valid table. Default off
+    keeps both engines running on every page.
+    """
+    pymupdf_results = _from_pymupdf(page)
+    if config.TABLE_FAST_MODE and pymupdf_results:
+        candidates = pymupdf_results
+    else:
+        candidates = pymupdf_results + _from_pdfplumber(plumber_page)
 
     kept: list[TableResult] = []
     for cand in sorted(candidates, key=lambda t: t.score, reverse=True):

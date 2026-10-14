@@ -5,20 +5,28 @@ import json
 import sys
 from pathlib import Path
 
-from . import config, storage
-from .converter import convert_pdf
+from .core import config
+from .services.conversion_service import convert_pdf
+from .storage import storage
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="doc-md-conversion",
+        prog="pdf-md-conversion",
         description="Konversi PDF ke Markdown tanpa API (pipeline sama dengan endpoint).",
     )
     parser.add_argument("input", type=Path, help="Path file PDF")
     parser.add_argument("-o", "--output", type=Path, default=None, help="Path file .md keluaran")
     parser.add_argument("--scan-images", action="store_true", help="Aktifkan OCR halaman scan")
-    parser.add_argument("--ocr-images", action="store_true", help="OCR tiap gambar embedded + flowchart")
-    parser.add_argument("--ocr-scope", choices=["all", "flowchart"], default="all", help="Cakupan OCR gambar (default: all)")
+    parser.add_argument(
+        "--ocr-images", action="store_true", help="OCR tiap gambar embedded + flowchart"
+    )
+    parser.add_argument(
+        "--ocr-scope",
+        choices=["all", "flowchart"],
+        default="all",
+        help="Cakupan OCR gambar (default: all)",
+    )
     parser.add_argument("--no-images", action="store_true", help="Jangan ekstrak gambar")
     parser.add_argument("--public-dir", type=Path, default=None, help="Override folder public")
     parser.add_argument("--json", action="store_true", help="Cetak metadata JSON ke stdout")

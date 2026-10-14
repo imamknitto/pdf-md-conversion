@@ -1,195 +1,57 @@
-# doc-md-conversion
+# pdf-md-conversion
 
-Standalone PDF→Markdown service (FastAPI) — deploy dan versioning mandiri,
-dapat dikonsumsi sebagai **remote REST API** oleh aplikasi apapun.
+Service REST API untuk konversi PDF ke Markdown (teks, tabel, gambar, OCR scan).
+Dikonsumsi sebagai remote API oleh aplikasi apapun. Default port **8379**.
 
-> Default port **8379**. Auth: set `CONVERTER_API_KEY` (Bearer) di
-> environment yang di-share/di-deploy; `/health` stays open. Artefak
-> `/public/*` adalah capability URL (`doc_id` tak tertebak); `/convert` +
-> `/convert/jobs` + `/download` + `/documents` + `DELETE /documents/{doc_id}`
-> butuh token bila key di-set.
+> Auth: set `PDF_MD_CONVERTER_API_KEY` (Bearer) bila di-share/di-deploy;
+> `/v1/health` selalu terbuka. Bila key di-set, semua endpoint lain butuh token.
 
-REST API (FastAPI) + CLI untuk konversi PDF ke Markdown. Pipeline per halaman:
+## Cara run
 
-- **Teks**: PyMuPDF word-reflow (mengatasi PDF justify yang menulis satu kata per baris).
-- **Tabel**: `pymupdf.find_tables()` + `pdfplumber.find_tables()`, divalidasi dan di-dedup (IoU).
-- **Halaman scan**: RapidOCR (ONNX, pip-only) — opsional via `scan_images`.
-- **Gambar**: hanya gambar bermakna; logo/header yang berulang tiap halaman dibuang.
-
-Artefak gambar disajikan statis dari `public/<doc_id>/` dan dibersihkan otomatis (TTL + batas ukuran).
-
-## Struktur
-
-```
-app/
-  main.py       FastAPI: POST /convert + /convert/jobs, mount /public, lifespan cleanup
-  config.py     Konstanta & override via environment variable
-  schemas.py    Model request/respons (Pydantic)
-  extractor.py  Ekstraksi teks per halaman (PyMuPDF reflow)
-  tables.py     Deteksi + validasi + render tabel Markdown
-  ocr.py        Wrapper RapidOCR (lazy singleton) + cost guards
-  flowchart.py  Rekonstruksi flowchart vektor lokal → Mermaid (tanpa LLM)
-  jobs.py       Registry in-memory untuk job konversi async
-  converter.py  Orkestrasi pipeline per halaman
-  storage.py    doc_id, path public, sanitasi, tulis file
-  cleanup.py    Sweeper TTL + batas disk
-  cli.py        Entrypoint tanpa API
-public/<doc_id>/{images,scans}
-```
-
-## Setup
+Lokal:
 
 ```powershell
+Copy-Item .env.example .env   # isi PDF_MD_CONVERTER_API_KEY bila perlu auth
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
+.\dev.ps1   # http://127.0.0.1:8379
 ```
 
-## CLI (tanpa API)
+Docker:
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.cli .\brd-lms.pdf -o .\out.md
-.\.venv\Scripts\python.exe -m app.cli .\brd-lms.pdf --scan-images --json
-.\.venv\Scripts\python.exe -m app.cli .\brd-lms.pdf --no-images
+Copy-Item .env.example .env
+docker compose up --build -d
+curl.exe http://127.0.0.1:8379/v1/health
 ```
 
-Opsi:
+## Kontrak API
 
-| Opsi | Keterangan |
+Detail per endpoint (contoh request + respons): [`README_API_CONTRACT.md`](README_API_CONTRACT.md).
+
+Base path `/v1` (kecuali `/public/*`):
+
+| Endpoint | Keterangan |
 |---|---|
-| `-o, --output` | Path file `.md` keluaran (default: samping input) |
-| `--scan-images` | Aktifkan OCR halaman scan |
-| `--ocr-images` | OCR tiap gambar embedded + flowchart |
-| `--ocr-scope` | `all` (default) atau `flowchart` |
-| `--no-images` | Jangan ekstrak gambar |
-| `--public-dir` | Override folder `public/` |
-| `--json` | Cetak metadata JSON ke stdout |
+| `GET /v1/health` | Health check (tanpa auth) |
+| `POST /v1/convert` | Konversi sinkron (PDF kecil/sedang) |
+| `POST /v1/convert/jobs` | Konversi async → `202` (PDF besar) |
+| `GET /v1/convert/jobs/{job_id}` | Status + progres + hasil job |
+| `GET /v1/documents` | Daftar dokumen yang masih tersedia |
+| `GET /v1/download/{doc_id}` | File markdown mentah |
+| `DELETE /v1/documents/{doc_id}` | Hapus dokumen + artefaknya |
 
-## API
-
-```powershell
-.\dev.ps1   # default http://127.0.0.1:8379 (baca .env bila ada)
-```
-
-Manual (tanpa script):
+Contoh cepat:
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8379 --workers 1
+curl.exe -X POST "http://127.0.0.1:8379/v1/convert" `
+  -H "Authorization: Bearer $env:PDF_MD_CONVERTER_API_KEY" `
+  -F "file=@dokumen.pdf" -o resp.json
 ```
 
-Endpoint (semua di bawah prefix deployment service ini):
+Catatan:
 
-- `GET /health` → `{"status":"ok","service":"doc-md-conversion","version":"0.1.0"}` (open)
-- `POST /convert` (multipart/form-data, sinkron — untuk PDF kecil/sedang)
-  - `file`: PDF, maksimal 30 MB
-  - `scan_images`: bool (default `false`) — OCR halaman scan
-  - `extract_images`: bool (default `true`) — ekstrak gambar embedded + halaman scan
-  - `ocr_images`: bool (default `false`) — OCR tiap gambar embedded (upscale
-    aman + urutan baca) langsung di bawah link gambarnya sebagai blok `> OCR:`;
-    Mermaid hanya ada di field API `flowchart_mermaid`, tidak masuk markdown.
-    Butuh `extract_images=true` agar berefek
-  - `ocr_scope`: `all` (default) atau `flowchart` — bila `flowchart`, blok OCR
-    hanya ditulis untuk gambar yang terdeteksi sebagai diagram/flowchart
-    (sinyal teks + bentuk vektor, ambang `FLOWCHART_SCORE_MIN`); sisanya tetap
-    sebagai link saja. Diabaikan bila `ocr_images=false`
-- `POST /convert/jobs` (multipart/form-data, field sama seperti `/convert`)
-  → `202 {"job_id","doc_id","status":"queued"}` — untuk PDF besar; 429 bila
-  antrean penuh (`CONVERT_MAX_QUEUE`)
-- `GET /convert/jobs/{job_id}` → `{"job_id","doc_id","filename","status",
-  "progress":{"pages_done","pages_total"},"result","error"}` dengan
-  `status`: `queued` | `processing` | `done` | `error`; `result` berisi
-  `ConvertResponse` penuh saat done; 404 bila job tak dikenal/expired
-- `GET /documents` → daftar dokumen yang masih tersedia (terbaru dulu)
-- `GET /download/{doc_id}` → file `text/markdown` (tanpa escape JSON)
-- `DELETE /documents/{doc_id}` → hapus dokumen + semua artefaknya (`{"doc_id","deleted":true}`, 404 bila tak ada)
-- `GET /public/{doc_id}/doc.md` → markdown mentah (static)
-- `GET /public/{doc_id}/images/<file>` → gambar hasil ekstraksi
-
-Contoh:
-
-```powershell
-curl.exe -X POST "http://127.0.0.1:8379/convert" `
-  -F "file=@brd-lms.pdf" -F "scan_images=false" -o resp.json
-# dengan token: -H "Authorization: Bearer $env:CONVERTER_API_KEY"
-
-# async untuk PDF besar (202 lalu poll):
-curl.exe -X POST "http://127.0.0.1:8379/convert/jobs" `
-  -F "file=@besar.pdf" -F "ocr_images=true" -o job.json
-curl.exe "http://127.0.0.1:8379/convert/jobs/<job_id>"
-```
-
-Respons JSON:
-
-```json
-{
-  "doc_id": "…",
-  "markdown": "## Page 1\n\n…",
-  "markdown_url": "/public/<doc_id>/doc.md",
-  "stats": { "pages": 101, "scanned_pages": 0, "tables": 4, "images_kept": 104, "images_skipped": 102 },
-  "images": [ { "page": 40, "kind": "image", "filename": "page-040-image-001.jpeg",
-                "url": "/public/<doc_id>/images/page-040-image-001.jpeg",
-                "width": 1268, "height": 658, "size_bytes": 63488 } ],
-  "warnings": [],
-  "expires_at": "2026-10-02T13:00:00+00:00"
-}
-```
-
-> `markdown` di JSON selalu ter-escape (`\n`) — itu normal JSON, bukan bug.
-> Di konsumen pakai JSON parse (otomatis jadi newline asli), atau ambil
-> file mentah via `markdown_url` / `/download/{doc_id}` lalu prefix
-> `"/public/"` dengan base URL service ini.
-
-Gambar dapat diakses di `http://127.0.0.1:8379/public/<doc_id>/images/<filename>`.
-
-## Docker
-
-```powershell
-Copy-Item .env.example .env   # wajib isi CONVERTER_API_KEY bila di-share/di-deploy
-docker build -t doc-md-conversion:0.1.0 .
-docker run -d --name converter -p 127.0.0.1:8379:8379 --env-file .env doc-md-conversion:0.1.0
-curl.exe http://127.0.0.1:8379/health
-```
-
-Catatan: image run sebagai non-root, 1 worker (OCR singleton),
-`PUBLIC_DIR=/data/public` di-mount ke volume bila artefak perlu persist.
-Model RapidOCR diunduh saat request OCR pertama (butuh internet sekali).
-
-## Konfigurasi (environment variable)
-
-| Variabel | Default | Keterangan |
-|---|---|---|
-| `CONVERTER_API_KEY` | *(kosong = terbuka)* | Bearer token untuk `/convert` + `/download`; wajib diisi bila di-share/di-deploy |
-| `MAX_UPLOAD_MB` | `30` | Batas ukuran upload |
-| `PUBLIC_DIR` | `./public` | Folder artefak statis |
-| `PUBLIC_TTL_MINUTES` | `60` | Umur folder sebelum dihapus |
-| `PUBLIC_MAX_MB` | `1024` | Batas total ukuran `public/` |
-| `CLEANUP_INTERVAL_MINUTES` | `10` | Interval sweeper |
-| `MIN_TEXT_CHARS` | `50` | Ambang deteksi halaman scan |
-| `PAGE_COVERAGE` | `0.5` | Rasio gambar menutupi halaman agar dianggap scan |
-| `RECURRING_XREF_RATIO` | `0.5` | Rasio kemunculan gambar untuk dianggap logo/header |
-| `IMAGE_MIN_AREA_RATIO` | `0.01` | Luas minimum gambar agar disimpan |
-| `MAX_IMAGE_MB` | `10` | Batas ukuran satu gambar |
-| `MAX_IMAGES_PER_DOC` | `200` | Batas jumlah gambar per dokumen |
-| `OCR_DPI` | `200` | Resolusi render untuk OCR |
-| `OCR_MAX_SIDE` | `1600` | Gambar OCR di-downscale ke sisi terpanjang ini (hemat CPU) |
-| `OCR_SKIP_BELOW` | `100` | Gambar lebih kecil dari ini (px) dilewati OCR |
-| `OCR_MAX_IMAGES` | `100` | Maks gambar di-OCR per dokumen; sisa disimpan tanpa teks OCR |
-| `CONVERT_JOB_TTL_MINUTES` | `120` | Umur status job async (`POST /convert/jobs`) |
-| `CONVERT_MAX_QUEUE` | `4` | Maks job async belum selesai; selebihnya 429 |
-
-## Batasan
-
-- Tabel **borderless** (tanpa garis) sering tidak terdeteksi dan tampil sebagai teks biasa.
-- Halaman tanpa text layer yang bukan halaman scan dibiarkan kosong di output.
-- RapidOCR mengunduh model saat pertama dijalankan (butuh internet sekali).
-- OCR itu CPU-bound (~3–4 dtk per gambar full-res): PDF 100+ halaman dengan
-  `ocr_images=true` bisa memakan waktu puluhan menit dalam mode sinkron —
-  pakai `POST /convert/jobs` + cost guards (`OCR_MAX_SIDE` /
-  `OCR_SKIP_BELOW` / `OCR_MAX_IMAGES`, gambar di atas cap tetap disimpan
-  tanpa teks OCR + warning).
-- Jalankan uvicorn dengan `--workers 1` (engine OCR singleton).
-- v1 hanya mendukung PDF.
-
-## Test manual
-
-Lihat `## CLI` dan `## API` di atas. Untuk menguji pembersihan disk, jalankan dengan `PUBLIC_TTL_MINUTES=0` lalu restart server.
+- Rate limit: `POST /v1/convert` 10 req/menit, `POST /v1/convert/jobs` 20 req/menit (429 bila terlampaui).
+- Dokumen kedaluwarsa otomatis (default 60 menit).
+- Hanya mendukung PDF. Tabel tanpa garis (borderless) sering tidak terdeteksi. Untuk PDF 100+ halaman dengan `ocr_images=true`, pakai jalur async.
