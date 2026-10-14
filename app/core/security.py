@@ -8,14 +8,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer = HTTPBearer(auto_error=False)
 
-logger = logging.getLogger("doc-md-conversion.security")
+logger = logging.getLogger("pdf-md-conversion.security")
 
 
 def _require_token(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> None:
-    """Bearer auth, active only when CONVERTER_API_KEY is set."""
-    expected = os.getenv("CONVERTER_API_KEY", "")
+    """Bearer auth, active only when PDF_MD_CONVERTER_API_KEY is set."""
+    expected = os.getenv("PDF_MD_CONVERTER_API_KEY", "")
     if not expected:
         return
     if credentials is None:

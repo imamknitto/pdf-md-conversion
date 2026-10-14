@@ -318,7 +318,7 @@ def trigger_webhook(job_id: str, webhook_url: str, status: str) -> None:
     success = send_webhook(webhook_url, payload)
     if not success:
         import logging
-        logger = logging.getLogger("doc-md-conversion.webhook")
+        logger = logging.getLogger("pdf-md-conversion.webhook")
         logger.warning("Webhook delivery failed after retries job=%s url=%s", job_id, webhook_url)
 
 

@@ -26,7 +26,7 @@ def _clear_jobs_db() -> None:
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("CONVERTER_API_KEY", "")
+    monkeypatch.setenv("PDF_MD_CONVERTER_API_KEY", "")
     monkeypatch.setattr(config, "PUBLIC_DIR", tmp_path / "public")
     (tmp_path / "public").mkdir(parents=True, exist_ok=True)
     _clear_jobs_db()
@@ -37,12 +37,12 @@ def client(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def authed_client(client, monkeypatch):
-    monkeypatch.setenv("CONVERTER_API_KEY", "test-key-123")
+    monkeypatch.setenv("PDF_MD_CONVERTER_API_KEY", "test-key-123")
     return client
 
 
 def auth_headers() -> dict:
-    return {"Authorization": f"Bearer {os.getenv('CONVERTER_API_KEY', '')}"}
+    return {"Authorization": f"Bearer {os.getenv('PDF_MD_CONVERTER_API_KEY', '')}"}
 
 
 def sample_bytes() -> bytes:

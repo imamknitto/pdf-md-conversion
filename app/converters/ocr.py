@@ -8,7 +8,7 @@ from enum import Enum
 
 from ..core import config
 
-logger = logging.getLogger("doc-md-conversion.ocr")
+logger = logging.getLogger("pdf-md-conversion.ocr")
 
 _lock = threading.Lock()
 _engine = None

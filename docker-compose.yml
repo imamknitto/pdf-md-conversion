@@ -1,0 +1,23 @@
+services:
+  pdf-converter:
+    build: .
+    image: pdf-md-conversion:0.1.0
+    container_name: pdf-md-converter
+    ports:
+      - "127.0.0.1:8379:8379"
+    env_file:
+      - .env
+    environment:
+      PUBLIC_DIR: /data/public
+    volumes:
+      - pdf-md-converter-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8379/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  pdf-md-converter-data:

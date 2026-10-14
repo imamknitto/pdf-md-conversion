@@ -6,7 +6,7 @@ from tests.conftest import auth_headers, sample_bytes
 def test_health_open_without_key(client):
     r = client.get("/v1/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "service": "doc-md-conversion", "version": "0.1.0"}
+    assert r.json() == {"status": "ok", "service": "pdf-md-conversion", "version": "0.1.0"}
 
 
 def test_health_open_with_key_set(authed_client):

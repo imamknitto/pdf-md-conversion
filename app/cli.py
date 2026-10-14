@@ -12,7 +12,7 @@ from .storage import storage
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="doc-md-conversion",
+        prog="pdf-md-conversion",
         description="Konversi PDF ke Markdown tanpa API (pipeline sama dengan endpoint).",
     )
     parser.add_argument("input", type=Path, help="Path file PDF")

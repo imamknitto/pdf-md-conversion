@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     """Knobs aplikasi; nama env var, default, dan tipe sama seperti tabel README.
 
     Nilai env yang tidak valid jatuh kembali ke default (perilaku config lama).
-    CONVERTER_API_KEY + PLATFORM_URL sengaja tidak di sini: dibaca per-request
+    PDF_MD_CONVERTER_API_KEY + PLATFORM_URL sengaja tidak di sini: dibaca per-request
     via os.getenv agar perubahan env/auth test tetap berlaku saat runtime.
     """
 

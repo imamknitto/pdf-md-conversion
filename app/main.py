@@ -22,7 +22,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-logger = logging.getLogger("doc-md-conversion")
+logger = logging.getLogger("pdf-md-conversion")
 
 _SHUTDOWN_TIMEOUT = 300.0  # 5 minutes max wait for in-progress jobs
 
@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI):
             pass
 
 
-app = FastAPI(title="doc-md-conversion", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="pdf-md-conversion", version="0.1.0", lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

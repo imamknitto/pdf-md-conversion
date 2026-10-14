@@ -13,7 +13,7 @@ from ..core.security import _require_token
 from ..schemas import ConvertResponse, ConvertStats, ImageMeta
 from ..storage import storage
 
-logger = logging.getLogger("doc-md-conversion")
+logger = logging.getLogger("pdf-md-conversion")
 
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",

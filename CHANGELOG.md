@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Rename identitas `doc-md-conversion` → `pdf-md-conversion` (**breaking**):
+  package + CLI (`pdf-md-conversion`), FastAPI title, logger
+  `pdf-md-conversion.*`, `/health.service`, env `CONVERTER_API_KEY` →
+  `PDF_MD_CONVERTER_API_KEY`, image Docker, service/container/volume compose.
+  Konsumen/deploy lama wajib menyesuaikan token env + cek `service`.
+
 - Optimasi CPU konversi (tanpa mengubah kontrak API/markdown): metadata gambar
   tiap halaman (`get_images`/`get_image_rects`) dan `get_text("words")` dihitung
   sekali per halaman lalu dipakai ulang lintas stage; `get_drawings()` halaman

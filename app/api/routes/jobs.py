@@ -27,7 +27,7 @@ from ..deps import _require_token, _validate_upload, _write_meta_and_response
 
 router = APIRouter()
 
-logger = logging.getLogger("doc-md-conversion")
+logger = logging.getLogger("pdf-md-conversion")
 
 limiter = Limiter(key_func=get_remote_address)
 
