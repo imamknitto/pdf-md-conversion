@@ -44,7 +44,7 @@ _in_progress_jobs: set[str] = set()
 def _get_db_path() -> Path:
     global _DB_PATH
     if _DB_PATH is None:
-        _DB_PATH = config.PUBLIC_DIR / "jobs.sqlite"
+        _DB_PATH = config.DATA_DIR / "jobs.sqlite"
     return _DB_PATH
 
 
@@ -145,11 +145,9 @@ def _unregister_in_progress(job_id: str) -> None:
 def create_job(doc_id: str, filename: str, options: dict) -> dict | None:
     """Register a queued job.
 
-    Returns None when the queue is full, shutting down, or disk over limit.
+    Returns None when the queue is full or shutting down.
     """
     if is_shutting_down():
-        return None
-    if storage.is_disk_over_limit():
         return None
 
     _init_db()

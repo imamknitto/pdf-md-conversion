@@ -5,9 +5,9 @@ __pycache__/
 *.pyo
 .pytest_cache/
 
-# runtime artifacts
-public/*
-!public/.gitkeep
+# runtime data (jobs.sqlite, etc.)
+data/*
+!data/.gitkeep
 tmp/
 *.tmp
 

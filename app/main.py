@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -16,7 +15,6 @@ from slowapi.util import get_remote_address
 from .api.routes import convert, documents, health, jobs
 from .core import config
 from .services import job_service as job_svc
-from .storage.cleanup import cleanup_loop, sweep_once
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,9 +62,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    config.PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
-    sweep_once()
-    task = asyncio.create_task(cleanup_loop())
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     try:
         yield
     finally:
@@ -80,12 +76,6 @@ async def lifespan(app: FastAPI):
             logger.info("All in-progress jobs completed")
         else:
             logger.warning("Shutdown timeout: some jobs may still be running")
-
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
 
 
 app = FastAPI(title="pdf-md-conversion", version="0.1.0", lifespan=lifespan)
@@ -119,8 +109,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-config.PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/public", StaticFiles(directory=str(config.PUBLIC_DIR)), name="public")
+config.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 API_PREFIX = "/v1"
 app.include_router(health.router, prefix=API_PREFIX)

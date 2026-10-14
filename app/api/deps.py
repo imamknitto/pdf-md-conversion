@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,8 +10,6 @@ from ..core import config
 from ..core.security import _require_token
 from ..schemas import ConvertResponse, ConvertStats, ImageMeta
 from ..storage import storage
-
-logger = logging.getLogger("pdf-md-conversion")
 
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",
@@ -58,7 +54,7 @@ def _validate_upload(filename: str, content_type: str, data: bytes) -> None:
         )
 
 
-def _write_meta_and_response(result, doc_id: str, filename: str) -> ConvertResponse:
+def _write_meta_and_response(result, doc_id: str, _filename: str) -> ConvertResponse:
     expires = datetime.now(timezone.utc) + timedelta(minutes=config.PUBLIC_TTL_MINUTES)
     stats = ConvertStats(
         pages=result.pages,
@@ -67,24 +63,6 @@ def _write_meta_and_response(result, doc_id: str, filename: str) -> ConvertRespo
         images_kept=result.images_kept,
         images_skipped=result.images_skipped,
     )
-    try:
-        (storage.safe_doc_dir(doc_id) / "meta.json").write_text(
-            json.dumps(
-                {
-                    "doc_id": doc_id,
-                    "filename": filename,
-                    "markdown_url": storage.markdown_url(doc_id),
-                    "stats": stats.model_dump(),
-                    "warnings": result.warnings,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "expires_at": expires.isoformat(),
-                },
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
-    except OSError:
-        logger.warning("gagal menulis meta.json untuk %s", doc_id)
     return ConvertResponse(
         doc_id=result.doc_id,
         markdown=result.markdown,

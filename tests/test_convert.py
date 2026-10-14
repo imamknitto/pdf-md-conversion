@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+
+from app.core import config
 from tests.conftest import sample_bytes
 
 
@@ -40,6 +43,13 @@ def test_convert_extracts_images(client):
     data = r.json()
     assert data["stats"]["images_kept"] >= 1
     assert "![" in data["markdown"]
+    assert data["images"]
+    for img in data["images"]:
+        assert img["data_base64"]
+        assert len(base64.b64decode(img["data_base64"])) == img["size_bytes"]
+        assert img["url"].startswith(f"/public/{data['doc_id']}/")
+        assert not img["url"].startswith("data:")
+    assert not (config.DATA_DIR / data["doc_id"]).exists()
 
 
 def test_convert_rejects_non_pdf_suffix(client):
