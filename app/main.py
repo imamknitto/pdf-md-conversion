@@ -12,7 +12,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from .api.routes import convert, documents, health, jobs
+from .api.routes import convert, documents, health, jobs, ocr
 from .core import config
 from .services import job_service as job_svc
 
@@ -115,4 +115,5 @@ API_PREFIX = "/v1"
 app.include_router(health.router, prefix=API_PREFIX)
 app.include_router(documents.router, prefix=API_PREFIX)
 app.include_router(convert.router, prefix=API_PREFIX)
+app.include_router(ocr.router, prefix=API_PREFIX)
 app.include_router(jobs.router, prefix=API_PREFIX)

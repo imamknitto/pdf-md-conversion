@@ -5,16 +5,20 @@ import json
 import sys
 from pathlib import Path
 
-from .services.conversion_service import convert_pdf
+from .api.deps import ALLOWED_IMAGE_SUFFIXES
+from .services.conversion_service import convert_image, convert_pdf
 from .storage import storage
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pdf-md-conversion",
-        description="Konversi PDF ke Markdown tanpa API (pipeline sama dengan endpoint).",
+        description=(
+            "Konversi PDF ke Markdown, atau OCR gambar standalone "
+            "(pipeline sama dengan endpoint)."
+        ),
     )
-    parser.add_argument("input", type=Path, help="Path file PDF")
+    parser.add_argument("input", type=Path, help="Path file PDF atau gambar")
     parser.add_argument("-o", "--output", type=Path, default=None, help="Path file .md keluaran")
     parser.add_argument("--scan-images", action="store_true", help="Aktifkan OCR halaman scan")
     parser.add_argument(
@@ -37,21 +41,44 @@ def main(argv: list[str] | None = None) -> int:
     if not args.input.is_file():
         print(f"error: file tidak ditemukan: {args.input}", file=sys.stderr)
         return 2
-    if args.input.suffix.lower() != ".pdf":
-        print("error: v1 hanya mendukung PDF", file=sys.stderr)
+
+    suffix = args.input.suffix.lower()
+    is_image = suffix in ALLOWED_IMAGE_SUFFIXES
+    is_pdf = suffix == ".pdf"
+
+    if not is_pdf and not is_image:
+        print(
+            "error: input harus PDF atau gambar "
+            f"({', '.join(sorted(ALLOWED_IMAGE_SUFFIXES))})",
+            file=sys.stderr,
+        )
+        return 2
+
+    if is_image and (args.scan_images or args.ocr_images or args.no_images):
+        print(
+            "error: flag --scan-images / --ocr-images / --no-images hanya untuk PDF",
+            file=sys.stderr,
+        )
         return 2
 
     output = args.output or args.input.with_suffix(".md")
     doc_id = storage.new_doc_id()
 
-    result = convert_pdf(
-        pdf_path=args.input,
-        doc_id=doc_id,
-        scan_images=args.scan_images,
-        extract_images=not args.no_images,
-        ocr_images=args.ocr_images,
-        ocr_scope=args.ocr_scope,
-    )
+    if is_image:
+        result = convert_image(
+            image_bytes=args.input.read_bytes(),
+            doc_id=doc_id,
+            filename=args.input.name,
+        )
+    else:
+        result = convert_pdf(
+            pdf_path=args.input,
+            doc_id=doc_id,
+            scan_images=args.scan_images,
+            extract_images=not args.no_images,
+            ocr_images=args.ocr_images,
+            ocr_scope=args.ocr_scope,
+        )
 
     output.write_text(result.markdown, encoding="utf-8")
 

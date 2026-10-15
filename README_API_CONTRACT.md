@@ -29,6 +29,7 @@ ID:
 Rate limit (429 bila terlampaui):
 
 - `POST /v1/convert`: 10 req/menit
+- `POST /v1/ocr`: 10 req/menit
 - `POST /v1/convert/jobs`: 20 req/menit
 
 ## 1. GET /v1/health
@@ -107,13 +108,49 @@ Error:
 | `429` | Rate limit |
 | `500` | Gagal memproses PDF |
 
-## 3. POST /v1/convert/jobs
+## 3. POST /v1/ocr
+
+OCR sinkron untuk gambar standalone (`multipart/form-data`). Bentuk respons
+sama dengan `/v1/convert` (`ConvertResponse`).
+
+Request:
+
+| Field | Tipe | Wajib | Default | Keterangan |
+|---|---|---|---|---|
+| `file` | file | ya | – | PNG / JPEG / WebP / TIFF, maksimal `MAX_IMAGE_MB` (default 10 MB) |
+
+Contoh:
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8379/v1/ocr" `
+  -H "Authorization: Bearer $env:PDF_MD_CONVERTER_API_KEY" `
+  -F "file=@scan.png" -o resp.json
+```
+
+Contoh respons `200`: field sama seperti `/v1/convert`. Ringkasannya:
+
+- `stats.pages` = `1`, `tables` = `0`, `scanned_pages` = `0`, `images_kept` = `1`
+- `images[0].kind` = `"image"`, `page` = `1`, `ocr_text` berisi hasil OCR (atau `null`)
+- `images[0].flowchart_mermaid` terisi bila diagram terdeteksi
+- `markdown` memuat link gambar + blok `> OCR:` (+ fenced `mermaid` bila ada)
+
+Error:
+
+| Status | Kapan |
+|---|---|
+| `400` | Bukan gambar / suffix atau content-type tak didukung / file corrupt |
+| `401` | Token salah / tidak ada (bila key di-set) |
+| `413` | File > `MAX_IMAGE_MB` |
+| `429` | Rate limit |
+| `500` | Gagal memproses gambar |
+
+## 4. POST /v1/convert/jobs
 
 Konversi async untuk PDF besar. Field sama seperti `/v1/convert`, plus:
 
 | Field | Tipe | Wajib | Keterangan |
 |---|---|---|---|
-| `webhook_url` | string | tidak | URL `http(s)` untuk callback saat job selesai (lihat §8) |
+| `webhook_url` | string | tidak | URL `http(s)` untuk callback saat job selesai (lihat §9) |
 
 Langsung `202`, tanpa menunggu selesai:
 
@@ -131,7 +168,7 @@ Contoh respons `202`:
 
 Error: sama seperti `/v1/convert`, plus `429` bila antrean penuh (`CONVERT_MAX_QUEUE`).
 
-## 4. GET /v1/convert/jobs/{job_id}
+## 5. GET /v1/convert/jobs/{job_id}
 
 Polling status job. Contoh respons `200` (processing):
 
@@ -153,7 +190,7 @@ objek `ConvertResponse` penuh seperti §2. Saat `error`, `error` berisi pesan
 
 Error: `401` (auth), `404` (`job_id` tidak valid / tak dikenal / expired).
 
-## 5. DELETE /v1/convert/jobs/{job_id}
+## 6. DELETE /v1/convert/jobs/{job_id}
 
 Batalkan job yang masih `queued`/`processing` (204 tanpa body).
 Job `done`/`error` → `409`. Job tak dikenal/expired → `404`.
@@ -163,7 +200,7 @@ curl.exe -X DELETE "http://127.0.0.1:8379/v1/convert/jobs/<job_id>" `
   -H "Authorization: Bearer $env:PDF_MD_CONVERTER_API_KEY"
 ```
 
-## 6. GET /v1/documents
+## 7. GET /v1/documents
 
 Stub legacy. Converter tidak menyimpan artefak; respons selalu:
 
@@ -173,11 +210,11 @@ Stub legacy. Converter tidak menyimpan artefak; respons selalu:
 
 Error: `401` (auth).
 
-## 7. GET /v1/download/{doc_id}
+## 8. GET /v1/download/{doc_id}
 
 Stub legacy. Selalu `404`. Gunakan field `markdown` dari response konversi.
 
-## 8. Webhook job (callback)
+## 9. Webhook job (callback)
 
 Bila `POST /v1/convert/jobs` menyertakan `webhook_url`, service `POST` ke URL itu
 saat job `done`/`error` (dengan retry + backoff). Contoh payload:
@@ -196,11 +233,11 @@ saat job `done`/`error` (dengan retry + backoff). Contoh payload:
 
 (`result` = objek `ConvertResponse` penuh seperti §2.)
 
-## 9. DELETE /v1/documents/{doc_id}
+## 10. DELETE /v1/documents/{doc_id}
 
 Stub legacy. Selalu `404`; penghapusan artefak menjadi tanggung jawab consumer.
 
-## 10. Handoff artefak
+## 11. Handoff artefak
 
 Untuk setiap hasil sinkron atau job async berstatus `done`, consumer:
 
