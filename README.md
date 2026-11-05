@@ -1,9 +1,11 @@
 # pdf-md-conversion
 
-Service REST API untuk konversi PDF ke Markdown (teks, tabel, gambar, OCR scan).
-Dikonsumsi sebagai remote API oleh `apps/api`. Default port **8379**.
+Service REST API untuk konversi PDF ke Markdown (teks, tabel, gambar, OCR scan)
+dan OCR gambar standalone. Dikonsumsi sebagai remote API oleh `apps/api`.
+Default port **8379**.
 
-Converter hanya memproses PDF dan menyerahkan hasil melalui respons API:
+Converter memproses PDF (atau gambar via `/v1/ocr`) dan menyerahkan hasil
+melalui respons API:
 
 - `markdown` berisi hasil Markdown.
 - `images[].data_base64` berisi byte gambar/scan untuk disimpan consumer.
@@ -47,6 +49,7 @@ Base path `/v1`:
 |---|---|
 | `GET /v1/health` | Health check (tanpa auth) |
 | `POST /v1/convert` | Konversi sinkron (PDF kecil/sedang) |
+| `POST /v1/ocr` | OCR sinkron gambar standalone (PNG/JPEG/WebP/TIFF) |
 | `POST /v1/convert/jobs` | Konversi async → `202` (PDF besar) |
 | `GET /v1/convert/jobs/{job_id}` | Status + progres + hasil job |
 | `GET /v1/documents` | Legacy stub; selalu `{"documents": []}` |
@@ -63,8 +66,8 @@ curl.exe -X POST "http://127.0.0.1:8379/v1/convert" `
 
 Catatan:
 
-- Rate limit: `POST /v1/convert` 10 req/menit, `POST /v1/convert/jobs` 20 req/menit (429 bila terlampaui).
+- Rate limit: `POST /v1/convert` dan `POST /v1/ocr` 10 req/menit, `POST /v1/convert/jobs` 20 req/menit (429 bila terlampaui).
 - `PUBLIC_TTL_MINUTES` menentukan `expires_at` yang diserahkan ke consumer.
 - Consumer wajib menyimpan `markdown` dan decode `images[].data_base64`.
 - `data_base64` menambah ukuran response sekitar 33% dari byte gambar asli.
-- Hanya mendukung PDF. Tabel tanpa garis (borderless) sering tidak terdeteksi. Untuk PDF 100+ halaman dengan `ocr_images=true`, pakai jalur async.
+- `/v1/convert` hanya PDF; gambar standalone pakai `/v1/ocr` (batas `MAX_IMAGE_MB`). Tabel tanpa garis (borderless) sering tidak terdeteksi. Untuk PDF 100+ halaman dengan `ocr_images=true`, pakai jalur async.

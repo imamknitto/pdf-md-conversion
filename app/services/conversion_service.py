@@ -377,6 +377,78 @@ def finalize_result(
     return result
 
 
+def convert_image(
+    image_bytes: bytes,
+    doc_id: str,
+    filename: str,
+) -> ConvertResult:
+    """OCR a standalone image into the same ConvertResult shape as convert_pdf."""
+    import io
+
+    from PIL import Image as _Image
+
+    safe_name = Path(filename).name or "image.png"
+    suffix = Path(safe_name).suffix.lower() or ".png"
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"}:
+        safe_name = f"{Path(safe_name).stem}.png"
+        suffix = ".png"
+    stored_name = f"image-001{suffix}"
+
+    result = ConvertResult(doc_id=doc_id, markdown="", pages=1, images_kept=1)
+
+    try:
+        with _Image.open(io.BytesIO(image_bytes)) as img:
+            width, height = img.size
+    except Exception:
+        width, height = 0, 0
+
+    entry: dict = {
+        "page": 1,
+        "kind": "image",
+        "filename": stored_name,
+        "url": storage.public_url(doc_id, "images", stored_name),
+        "width": width,
+        "height": height,
+        "size_bytes": len(image_bytes),
+        "ocr_text": None,
+        "flowchart_mermaid": None,
+        "data_base64": base64.b64encode(image_bytes).decode("ascii"),
+    }
+    result.images.append(entry)
+
+    md_parts = [f"![Gambar]({entry['url']})"]
+
+    try:
+        boxes, ocr_status = ocr_image_boxes_ex(image_bytes)
+    except Exception:
+        boxes, ocr_status = [], "broken"
+
+    if ocr_status == "tiny":
+        result.warnings.append("Gambar terlalu kecil untuk OCR, disimpan tanpa teks OCR.")
+        md_parts.append("> OCR: _tidak menghasilkan teks._")
+    elif ocr_status in ("broken", "circuit_open"):
+        result.warnings.append(f"OCR gagal (status={ocr_status}).")
+        md_parts.append("> OCR: _tidak menghasilkan teks._")
+    elif not boxes:
+        result.warnings.append("OCR tidak menghasilkan teks.")
+        md_parts.append("> OCR: _tidak menghasilkan teks._")
+    else:
+        entry["ocr_text"] = "\n".join(b["text"] for b in boxes)
+        quoted = "\n".join(f"> {b['text']}" for b in boxes)
+        md_parts.append(f"> OCR:\n{quoted}")
+        if config.FLOWCHART_ENABLE:
+            try:
+                fc = flowchart_mod.from_ocr_boxes(boxes)
+            except Exception:
+                fc = None
+            if fc and fc.get("mermaid"):
+                entry["flowchart_mermaid"] = fc["mermaid"]
+                md_parts.append(f"```mermaid\n{fc['mermaid']}\n```")
+
+    result.markdown = "\n\n".join(md_parts) + "\n"
+    return result
+
+
 def convert_pdf(
     pdf_path: Path,
     doc_id: str,

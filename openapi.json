@@ -28,7 +28,7 @@
     "/v1/documents": {
       "get": {
         "summary": "List Documents",
-        "description": "Daftar dokumen hasil konversi yang masih tersedia (terbaru dulu).",
+        "description": "Legacy: artifacts live on the consumer; converter never lists files.",
         "operationId": "list_documents_v1_documents_get",
         "responses": {
           "200": {
@@ -54,7 +54,7 @@
     "/v1/download/{doc_id}": {
       "get": {
         "summary": "Download Markdown",
-        "description": "Unduh markdown sebagai file text/markdown (tanpa escape JSON).",
+        "description": "Legacy: markdown is returned in convert/job responses, not as files here.",
         "operationId": "download_markdown_v1_download__doc_id__get",
         "security": [
           {
@@ -97,7 +97,7 @@
     "/v1/documents/{doc_id}": {
       "delete": {
         "summary": "Delete Document",
-        "description": "Hapus dokumen hasil konversi beserta seluruh artefaknya.",
+        "description": "Legacy: artifact deletion is owned by the consumer.",
         "operationId": "delete_document_v1_documents__doc_id__delete",
         "security": [
           {
@@ -120,11 +120,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Delete Document V1 Documents  Doc Id  Delete"
-                }
+                "schema": {}
               }
             }
           },
@@ -150,6 +146,49 @@
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_convert_v1_convert_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/ocr": {
+      "post": {
+        "summary": "Ocr Standalone",
+        "operationId": "ocr_standalone_v1_ocr_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ocr_standalone_v1_ocr_post"
               }
             }
           },
@@ -389,6 +428,20 @@
           "file"
         ],
         "title": "Body_convert_v1_convert_post"
+      },
+      "Body_ocr_standalone_v1_ocr_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_ocr_standalone_v1_ocr_post"
       },
       "ConvertJobAccepted": {
         "properties": {

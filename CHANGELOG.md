@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `POST /v1/ocr`: OCR sinkron gambar standalone (PNG/JPEG/WebP/TIFF). Respons
+  memakai `ConvertResponse` yang sama dengan `/v1/convert`. CLI menerima input
+  gambar dengan suffix yang didukung. Batas ukuran `MAX_IMAGE_MB`.
 - Rename identitas `doc-md-conversion` → `pdf-md-conversion` (**breaking**):
   package + CLI (`pdf-md-conversion`), FastAPI title, logger
   `pdf-md-conversion.*`, `/health.service`, env `CONVERTER_API_KEY` →

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pymupdf
 from fastapi import HTTPException
+from PIL import Image as _Image
 
 from ..core import config
 from ..core.security import _require_token
@@ -18,10 +20,26 @@ ALLOWED_CONTENT_TYPES = {
     "",
 }
 
+ALLOWED_IMAGE_CONTENT_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/tiff",
+    "image/tif",
+    "application/octet-stream",
+    "",
+}
+
+ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"}
+
 __all__ = [
     "ALLOWED_CONTENT_TYPES",
+    "ALLOWED_IMAGE_CONTENT_TYPES",
+    "ALLOWED_IMAGE_SUFFIXES",
     "_require_token",
     "_validate_upload",
+    "_validate_image_upload",
     "_write_meta_and_response",
 ]
 
@@ -52,6 +70,35 @@ def _validate_upload(filename: str, content_type: str, data: bytes) -> None:
             status_code=400,
             detail="PDF terenkripsi (password protected). Harap hapus password sebelum upload.",
         )
+
+
+def _validate_image_upload(filename: str, content_type: str, data: bytes) -> None:
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ALLOWED_IMAGE_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Endpoint /ocr hanya mendukung gambar "
+                f"({', '.join(sorted(ALLOWED_IMAGE_SUFFIXES))})."
+            ),
+        )
+    if content_type not in ALLOWED_IMAGE_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"content-type tidak didukung: {content_type}",
+        )
+    if len(data) > config.MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Ukuran file melebihi batas {config.MAX_IMAGE_MB} MB.",
+        )
+    if not data:
+        raise HTTPException(status_code=400, detail="File gambar kosong.")
+    try:
+        with _Image.open(io.BytesIO(data)) as img:
+            img.verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="File bukan gambar yang valid.") from None
 
 
 def _write_meta_and_response(result, doc_id: str, _filename: str) -> ConvertResponse:
