@@ -52,9 +52,7 @@ Base path `/v1`:
 | `POST /v1/ocr` | OCR sinkron gambar standalone (PNG/JPEG/WebP/TIFF) |
 | `POST /v1/convert/jobs` | Konversi async → `202` (PDF besar) |
 | `GET /v1/convert/jobs/{job_id}` | Status + progres + hasil job |
-| `GET /v1/documents` | Legacy stub; selalu `{"documents": []}` |
-| `GET /v1/download/{doc_id}` | Legacy stub; selalu `404` |
-| `DELETE /v1/documents/{doc_id}` | Legacy stub; selalu `404` |
+| `DELETE /v1/convert/jobs/{job_id}` | Batalkan job `queued`/`processing` |
 
 Contoh cepat:
 
@@ -66,8 +64,10 @@ curl.exe -X POST "http://127.0.0.1:8379/v1/convert" `
 
 Catatan:
 
-- Rate limit: `POST /v1/convert` dan `POST /v1/ocr` 10 req/menit, `POST /v1/convert/jobs` 20 req/menit (429 bila terlampaui).
-- `PUBLIC_TTL_MINUTES` menentukan `expires_at` yang diserahkan ke consumer.
-- Consumer wajib menyimpan `markdown` dan decode `images[].data_base64`.
-- `data_base64` menambah ukuran response sekitar 33% dari byte gambar asli.
+- Rate limit: `POST /v1/convert` dan `POST /v1/ocr` 10 req/menit, `POST /v1/convert/jobs` 20 req/menit (429 `{"detail": ...}` bila terlampaui).
+- `PUBLIC_TTL_MINUTES` hanya metadata untuk `expires_at` yang diserahkan ke consumer; service tidak menyimpan artefak.
+- Consumer wajib menyimpan `markdown` dan decode `images[].data_base64` bila ada.
+- `data_base64` hanya dikirim bila request memakai opsi gambar (`extract_images=true` atau `scan_images=true`); tanpa itu `images` kosong.
+- Batas resource: PDF `MAX_UPLOAD_MB`/`MAX_PAGES`, gambar `MAX_IMAGE_MB`/`MAX_IMAGE_PIXELS`, dokumen `MAX_IMAGES_PER_DOC`. Timeout keras per konversi tidak didukung; pakai jalur async untuk PDF besar.
+- Webhook hanya boleh mengarah ke host publik pada port standar (SSRF guard). Detail di [`README_API_CONTRACT.md`](README_API_CONTRACT.md) §7.
 - `/v1/convert` hanya PDF; gambar standalone pakai `/v1/ocr` (batas `MAX_IMAGE_MB`). Tabel tanpa garis (borderless) sering tidak terdeteksi. Untuk PDF 100+ halaman dengan `ocr_images=true`, pakai jalur async.

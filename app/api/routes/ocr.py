@@ -4,9 +4,8 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
+from ...core.rate_limit import limiter, rate_limit_key
 from ...schemas import ConvertResponse
 from ...services.conversion_service import convert_image
 from ...storage import storage
@@ -16,19 +15,9 @@ router = APIRouter()
 
 logger = logging.getLogger("pdf-md-conversion")
 
-limiter = Limiter(key_func=get_remote_address)
-
-
-def _rate_limit_key(request: Request) -> str:
-    """Rate limit key: API key if authenticated, else IP."""
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        return f"apikey:{auth[7:]}"
-    return get_remote_address(request)
-
 
 @router.post("/ocr", response_model=ConvertResponse)
-@limiter.limit("10/minute", key_func=_rate_limit_key)
+@limiter.limit("10/minute", key_func=rate_limit_key)
 async def ocr_standalone(
     request: Request,
     file: UploadFile = File(...),
@@ -57,4 +46,4 @@ async def ocr_standalone(
         doc_id,
         result.images_kept,
     )
-    return _write_meta_and_response(result, doc_id, filename)
+    return _write_meta_and_response(result, doc_id)

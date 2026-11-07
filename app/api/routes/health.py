@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from ...core.version import __version__
+
 router = APIRouter()
 
-SERVICE_VERSION = "0.1.0"
+SERVICE_VERSION = __version__
 
 
 @router.get("/health")

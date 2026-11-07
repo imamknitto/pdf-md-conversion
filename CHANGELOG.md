@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+- **Breaking**: hapus endpoint legacy `GET /v1/documents`,
+  `GET /v1/download/{doc_id}`, dan `DELETE /v1/documents/{doc_id}` (selalu
+  kosong/404). Router, test, dan entri dokumentasi/openapi ikut dihapus.
+- Async job kini memakai satu worker thread dengan antrean nyata
+  (`queue.Queue`): job kedua tetap `queued` sampai job pertama selesai,
+  `CONVERT_MAX_QUEUE` menjadi batas kedalaman antrean, dan worker berhenti
+  dengan rapi saat shutdown (job aktif diselesaikan).
+- Upload PDF di-stream per chunk ke file sementara (tidak lagi dibaca penuh
+  ke memori); validasi ukuran/magic bytes/jumlah halaman dari file, dan file
+  sementara selalu dihapus setelah sync/async job selesai.
+- SQLite: `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`;
+  sweep TTL maksimal sekali per 60 detik; update progres di-throttle
+  (per 5% / per detik / saat selesai); webhook memakai record job yang sudah
+  ada (tidak query ulang).
+- Kurangi pekerjaan duplikat: daftar gambar tiap halaman diambil sekali per
+  dokumen untuk recurring-xref dan analisis; deteksi flowchart per halaman
+  yang hasilnya tidak pernah masuk markdown dihapus; pdfplumber dibuka
+  lazily; halaman scan OCR langsung dari pixmap tanpa encode/decode PNG.
+- `GZipMiddleware` (minimum 1024 byte) untuk respons besar.
+- Satu instance rate limiter di `app.core.rate_limit`; key token API di-hash
+  SHA-256; limiter ganda per-route dihapus.
+- Test: sample PDF dibuat programatik (tidak butuh `sample-doc/*.pdf`), test
+  antrean/graceful shutdown/SQLite concurrency/TTL, dan workflow CI
+  (`pytest`, `ruff`, `generate_openapi.py --check`).
+
+- Fix job lifecycle: error non-cancel kini selalu jadi status `error` (tidak
+  ada job stuck `processing`); job `queued`/`processing` yang tertinggal saat
+  restart ditandai `error` lewat recovery startup; cancel tetap idempoten dan
+  status `cancelled` tidak ditimpa.
+- Webhook: `httpx` dipindah ke dependency utama (jalan di image produksi),
+  pengiriman pindah ke thread terpisah (tidak memblokir event loop), retry
+  dibatasi 3 percobaan. SSRF guard menolak host privat/loopback/link-local,
+  kredensial URL, port non-standar, dan redirect.
+- Resource limits: `MAX_PAGES=500` dan `MAX_IMAGE_PIXELS=50000000`; PDF/gambar
+  di atas batas ditolak `400`/`413`. Cap `MAX_IMAGES_PER_DOC` kini dihitung
+  per dokumen (sebelumnya per halaman).
+- Tabel: karakter `|` di sel di-escape menjadi `\|` agar markdown valid.
+- PDF berpassword dicek dengan context manager (tidak ada file handle bocor).
+- 429 mengembalikan `{"detail": ...}` sesuai kontrak; perbandingan token
+  memakai `secrets.compare_digest`.
+- `data_base64` hanya dikirim saat opsi gambar/scan aktif; `images` kosong
+  bila tidak diminta.
+- Config: `.env` dibaca otomatis, default `CONVERT_MAX_QUEUE=4`, satu sumber
+  default, versi diambil dari metadata package. Hapus `PUBLIC_DIR`.
+- Hapus dead code: `unfinished_count`, `get_circuit_state`,
+  `reset_circuit_breaker`, parameter `_filename` dan `page` yang tidak dipakai.
+
 - `POST /v1/ocr`: OCR sinkron gambar standalone (PNG/JPEG/WebP/TIFF). Respons
   memakai `ConvertResponse` yang sama dengan `/v1/convert`. CLI menerima input
   gambar dengan suffix yang didukung. Batas ukuran `MAX_IMAGE_MB`.

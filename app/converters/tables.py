@@ -35,7 +35,7 @@ def _normalize(rows) -> list[list[str]]:
     return out
 
 
-def _valid(rows: list[list[str]], page: pymupdf.Page) -> bool:
+def _valid(rows: list[list[str]]) -> bool:
     if len(rows) < 2:
         return False
     ncols = max((len(r) for r in rows), default=0)
@@ -73,7 +73,7 @@ def _from_pymupdf(page: pymupdf.Page) -> list[TableResult]:
             rows = _normalize(table.extract())
         except Exception:
             continue
-        if _valid(rows, page):
+        if _valid(rows):
             results.append(TableResult(bbox=tuple(table.bbox), rows=rows, source="pymupdf"))
     return results
 
@@ -101,17 +101,24 @@ def _from_pdfplumber(plumber_page) -> list[TableResult]:
     return results
 
 
-def extract_tables(page: pymupdf.Page, plumber_page=None) -> list[TableResult]:
+def extract_tables(
+    page: pymupdf.Page,
+    plumber_page=None,
+    *,
+    plumber_page_getter=None,
+) -> list[TableResult]:
     """Detect tables from PyMuPDF and pdfplumber, validated and de-duplicated.
 
     When ``TABLE_FAST_MODE`` is enabled, pdfplumber (the costlier engine) is
-    only consulted for pages where PyMuPDF found no valid table. Default off
-    keeps both engines running on every page.
+    only consulted for pages where PyMuPDF found no valid table. ``plumber_page_getter``
+    is called lazily so pdfplumber opens only when it is actually needed.
     """
     pymupdf_results = _from_pymupdf(page)
     if config.TABLE_FAST_MODE and pymupdf_results:
         candidates = pymupdf_results
     else:
+        if plumber_page is None and plumber_page_getter is not None:
+            plumber_page = plumber_page_getter()
         candidates = pymupdf_results + _from_pdfplumber(plumber_page)
 
     kept: list[TableResult] = []
@@ -123,16 +130,20 @@ def extract_tables(page: pymupdf.Page, plumber_page=None) -> list[TableResult]:
     return kept
 
 
+def _escape_cell(cell: str) -> str:
+    return cell.replace("|", "\\|")
+
+
 def table_to_markdown(rows: list[list[str]]) -> str:
     if not rows:
         return ""
     width = max(len(r) for r in rows)
     padded = [(r + [""] * width)[:width] for r in rows]
-    header = padded[0]
+    header = [_escape_cell(c) for c in padded[0]]
     lines = [
         "| " + " | ".join(header) + " |",
         "| " + " | ".join(["---"] * width) + " |",
     ]
     for row in padded[1:]:
-        lines.append("| " + " | ".join(row) + " |")
+        lines.append("| " + " | ".join(_escape_cell(c) for c in row) + " |")
     return "\n".join(lines)

@@ -10,9 +10,10 @@ import pymupdf
 
 from ..converters import flowchart as flowchart_mod
 from ..converters.extractor import extract_text
-from ..converters.ocr import ocr_image, ocr_image_boxes_ex
+from ..converters.ocr import ocr_image_boxes_ex, ocr_image_from_pil
 from ..converters.tables import extract_tables, table_to_markdown
 from ..core import config
+from ..core.errors import JobCancelled
 from ..storage import storage
 
 
@@ -61,15 +62,26 @@ class PageResult:
     images_skipped: int = 0
 
 
-def _recurring_xrefs(doc: pymupdf.Document) -> set[int]:
+def _precompute_images(doc: pymupdf.Document) -> tuple[set[int], dict[int, list]]:
+    """Fetch each page's image list once and derive recurring xrefs.
+
+    Returns (recurring_xrefs, {page_index: get_images(full=True)}) so page
+    analysis reuses the same list instead of parsing each page twice.
+    """
     page_count = doc.page_count
-    if page_count <= 1:
-        return set()
+    per_page: dict[int, list] = {}
     seen: dict[int, int] = {}
-    for page in doc:
-        for info in page.get_images(full=True):
+    for index, page in enumerate(doc):
+        infos = page.get_images(full=True)
+        per_page[index] = infos
+        for info in infos:
             seen[info[0]] = seen.get(info[0], 0) + 1
-    return {x for x, count in seen.items() if count / page_count > config.RECURRING_XREF_RATIO}
+    if page_count <= 1:
+        return set(), per_page
+    recurring = {
+        x for x, count in seen.items() if count / page_count > config.RECURRING_XREF_RATIO
+    }
+    return recurring, per_page
 
 
 def _max_image_ratio(page: pymupdf.Page, xref: int) -> float:
@@ -116,9 +128,10 @@ def extract_pdf_metadata(doc: pymupdf.Document) -> dict:
 
 def analyze_page(
     page: pymupdf.Page,
-    plumber_page: Any,
     number: int,
     recurring: set[int],
+    image_infos_raw: list | None = None,
+    plumber_page_getter: Callable[[], Any] | None = None,
 ) -> PageContext:
     """Stage 1: Analyze page - detect scan, tables, recurring images."""
     words = page.get_text("words")
@@ -129,7 +142,8 @@ def analyze_page(
 
     image_infos: list[tuple[int, float]] = []
     seen_xrefs: set[int] = set()
-    for info in page.get_images(full=True):
+    raw_infos = image_infos_raw if image_infos_raw is not None else page.get_images(full=True)
+    for info in raw_infos:
         xref = info[0]
         if xref in seen_xrefs:
             continue
@@ -139,13 +153,13 @@ def analyze_page(
     has_cover_image = any(ratio >= config.PAGE_COVERAGE for _, ratio in image_infos)
     is_scan = len(raw_text) < config.MIN_TEXT_CHARS and has_cover_image
 
-    tables = extract_tables(page, plumber_page)
+    tables = extract_tables(page, plumber_page_getter=plumber_page_getter)
     exclude = [t.bbox for t in tables]
 
     return PageContext(
         number=number,
         page=page,
-        plumber_page=plumber_page,
+        plumber_page=None,
         raw_text=raw_text,
         is_scan=is_scan,
         has_cover_image=has_cover_image,
@@ -157,6 +171,13 @@ def analyze_page(
     )
 
 
+def _pil_from_pixmap(pix: pymupdf.Pixmap):
+    """Wrap pixmap samples in a PIL image without an intermediate PNG encode."""
+    from PIL import Image as _Image
+
+    return _Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+
 def process_scan_page(ctx: PageContext, doc_id: str, scan_images: bool) -> PageResult:
     """Stage 2a: Process scan page - OCR full page if enabled."""
     result = PageResult()
@@ -165,7 +186,18 @@ def process_scan_page(ctx: PageContext, doc_id: str, scan_images: bool) -> PageR
     if ctx.is_scan:
         result.scanned = True
         if scan_images:
-            pix = ctx.page.get_pixmap(dpi=config.OCR_DPI)
+            pix = ctx.page.get_pixmap(
+                dpi=config.OCR_DPI,
+                colorspace=pymupdf.csRGB,
+                alpha=False,
+            )
+            if pix.width * pix.height > config.MAX_IMAGE_PIXELS:
+                result.markdown_parts.append("_Halaman scan terlalu besar untuk diproses._")
+                result.warnings.append(
+                    f"Halaman {number}: gambar scan melebihi batas "
+                    f"{config.MAX_IMAGE_PIXELS} piksel, dilewati."
+                )
+                return result
             data = pix.tobytes("png")
             filename = f"page-{number:03d}.png"
             result.images.append(
@@ -180,7 +212,7 @@ def process_scan_page(ctx: PageContext, doc_id: str, scan_images: bool) -> PageR
                     "data_base64": base64.b64encode(data).decode("ascii"),
                 }
             )
-            text = ocr_image(data)
+            text = ocr_image_from_pil(_pil_from_pixmap(pix))
             result.markdown_parts.append(text or "_OCR tidak menghasilkan teks._")
         else:
             result.markdown_parts.append("_Halaman scan; OCR dimatikan._")
@@ -218,6 +250,7 @@ def process_images(
     ocr_tiny: int,
     image_cap_hit: bool,
     skipped_nonflow: int,
+    images_kept_so_far: int = 0,
 ) -> tuple[PageResult, int, int, int, bool, int]:
     """Stage 4: Process embedded images - extract, optionally OCR, flowchart."""
     result = PageResult()
@@ -237,7 +270,7 @@ def process_images(
             result.images_skipped += 1
             continue
 
-        if result.images_kept >= config.MAX_IMAGES_PER_DOC:
+        if images_kept_so_far + result.images_kept >= config.MAX_IMAGES_PER_DOC:
             if not image_cap_hit:
                 result.warnings.append(
                     f"Batas {config.MAX_IMAGES_PER_DOC} gambar tercapai; sisa dilewati."
@@ -249,6 +282,14 @@ def process_images(
         try:
             data = ctx.page.parent.extract_image(xref)
         except Exception:
+            result.images_skipped += 1
+            continue
+
+        if data["width"] * data["height"] > config.MAX_IMAGE_PIXELS:
+            result.warnings.append(
+                f"Halaman {number}: gambar {xref} melebihi batas "
+                f"{config.MAX_IMAGE_PIXELS} piksel, dilewati."
+            )
             result.images_skipped += 1
             continue
 
@@ -324,29 +365,6 @@ def process_images(
         )
 
     return result, ocr_done, ocr_capped, ocr_tiny, image_cap_hit, skipped_nonflow
-
-
-def process_page_flowchart(
-    ctx: PageContext,
-    ocr_images: bool,
-) -> PageResult:
-    """Stage 5: Detect flowchart from page vector graphics (if enabled)."""
-    result = PageResult()
-    number = ctx.number
-
-    if ocr_images and config.FLOWCHART_ENABLE and not ctx.is_scan and not ctx.tables:
-        try:
-            fc_page = flowchart_mod.from_page(
-                ctx.page, drawings=_page_drawings(ctx), words=ctx.words
-            )
-        except Exception:
-            fc_page = None
-        if fc_page and len(fc_page.get("nodes", [])) >= 2:
-            if fc_page.get("confidence") == "low":
-                result.warnings.append(
-                    f"Halaman {number}: struktur flowchart tidak pasti, hanya urutan baca linear."
-                )
-    return result
 
 
 def assemble_page_result(ctx: PageContext, page_results: list[PageResult]) -> str:
@@ -449,6 +467,29 @@ def convert_image(
     return result
 
 
+class _LazyPlumber:
+    """Open pdfplumber only if a page actually needs the second table engine."""
+
+    def __init__(self, path: Path):
+        self._path = path
+        self._ctx = None
+        self._pdf = None
+
+    def page(self, index: int):
+        if self._pdf is None:
+            import pdfplumber
+
+            self._ctx = pdfplumber.open(self._path)
+            self._pdf = self._ctx.__enter__()
+        return self._pdf.pages[index]
+
+    def close(self) -> None:
+        if self._ctx is not None:
+            self._ctx.__exit__(None, None, None)
+            self._ctx = None
+            self._pdf = None
+
+
 def convert_pdf(
     pdf_path: Path,
     doc_id: str,
@@ -466,85 +507,92 @@ def convert_pdf(
             Called at start of each page and before heavy operations.
     """
     result = ConvertResult(doc_id=doc_id, markdown="")
+    plumber = _LazyPlumber(pdf_path)
 
-    import pdfplumber
+    try:
+        with pymupdf.open(pdf_path) as doc:
+            result.pages = doc.page_count
+            result.metadata = extract_pdf_metadata(doc)
+            recurring, images_per_page = _precompute_images(doc)
 
-    with pymupdf.open(pdf_path) as doc, pdfplumber.open(pdf_path) as plumber:
-        result.pages = doc.page_count
-        result.metadata = extract_pdf_metadata(doc)
-        recurring = _recurring_xrefs(doc)
+            ocr_done = 0
+            ocr_capped = 0
+            ocr_tiny = 0
+            image_cap_hit = False
 
-        ocr_done = 0
-        ocr_capped = 0
-        ocr_tiny = 0
-        image_cap_hit = False
+            for index, page in enumerate(doc):
+                # Check cancellation at start of each page
+                if check_cancelled and check_cancelled():
+                    raise JobCancelled("Job cancelled")
 
-        for index, page in enumerate(doc):
-            # Check cancellation at start of each page
-            if check_cancelled and check_cancelled():
-                raise RuntimeError("Job cancelled")
+                number = index + 1
 
-            number = index + 1
-            plumber_page = plumber.pages[index]
+                # Stage 1: Analyze (reuse the image list fetched above)
+                ctx = analyze_page(
+                    page,
+                    number,
+                    recurring,
+                    image_infos_raw=images_per_page.get(index),
+                    plumber_page_getter=lambda index=index: plumber.page(index),
+                )
+                if ctx.is_scan:
+                    result.scanned_pages += 1
 
-            # Stage 1: Analyze
-            ctx = analyze_page(page, plumber_page, number, recurring)
-            if ctx.is_scan:
-                result.scanned_pages += 1
+                # Stage 2a/2b: Scan or Text
+                page_results: list[PageResult] = []
+                page_results.append(process_scan_page(ctx, doc_id, scan_images))
+                page_results.append(process_text_page(ctx))
 
-            # Stage 2a/2b: Scan or Text
-            page_results: list[PageResult] = []
-            page_results.append(process_scan_page(ctx, doc_id, scan_images))
-            page_results.append(process_text_page(ctx))
+                # Stage 3: Tables
+                page_results.append(process_tables(ctx))
+                result.tables += page_results[-1].tables_count
 
-            # Stage 3: Tables
-            page_results.append(process_tables(ctx))
-            result.tables += page_results[-1].tables_count
+                # Stage 4: Images (heavy - check before)
+                if check_cancelled and check_cancelled():
+                    raise JobCancelled("Job cancelled")
+                (
+                    img_result,
+                    ocr_done,
+                    ocr_capped,
+                    ocr_tiny,
+                    image_cap_hit,
+                    skipped_nonflow,
+                ) = process_images(
+                    ctx,
+                    doc_id,
+                    extract_images,
+                    ocr_images,
+                    ocr_scope,
+                    ocr_done,
+                    ocr_capped,
+                    ocr_tiny,
+                    image_cap_hit,
+                    0,
+                    images_kept_so_far=result.images_kept,
+                )
+                result.images_kept += img_result.images_kept
+                result.images_skipped += img_result.images_skipped
+                page_results.append(img_result)
 
-            # Stage 4: Images (heavy - check before)
-            if check_cancelled and check_cancelled():
-                raise RuntimeError("Job cancelled")
-            (
-                img_result,
-                ocr_done,
-                ocr_capped,
-                ocr_tiny,
-                image_cap_hit,
-                skipped_nonflow,
-            ) = process_images(
-                ctx,
-                doc_id,
-                extract_images,
-                ocr_images,
-                ocr_scope,
-                ocr_done,
-                ocr_capped,
-                ocr_tiny,
-                image_cap_hit,
-                0,
-            )
-            result.images_kept += img_result.images_kept
-            result.images_skipped += img_result.images_skipped
-            page_results.append(img_result)
+                # Stage 5: Assemble
+                page_md = assemble_page_result(ctx, page_results)
+                result.markdown += page_md
 
-            # Stage 5: Page-level flowchart
-            page_results.append(process_page_flowchart(ctx, ocr_images))
+                # Collect images and warnings
+                for pr in page_results:
+                    result.images.extend(pr.images)
+                    result.warnings.extend(pr.warnings)
 
-            # Stage 6: Assemble
-            page_md = assemble_page_result(ctx, page_results)
-            result.markdown += page_md
-
-            # Collect images and warnings
-            for pr in page_results:
-                result.images.extend(pr.images)
-                result.warnings.extend(pr.warnings)
-
-            # Progress callback
-            if on_page is not None:
-                try:
-                    on_page(number, result.pages)
-                except Exception:
-                    pass
+                # Progress callback
+                if on_page is not None:
+                    try:
+                        on_page(number, result.pages)
+                    except JobCancelled:
+                        raise
+                    except Exception:
+                        pass
+    finally:
+        plumber.close()
 
     # Stage 7: Finalize
     return finalize_result(result, ocr_capped, ocr_tiny)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -21,7 +22,7 @@ def _require_token(
     if credentials is None:
         logger.warning("auth missing: no credentials provided")
         raise HTTPException(status_code=401, detail="Unauthorized.")
-    if credentials.credentials != expected:
+    if not secrets.compare_digest(credentials.credentials.encode(), expected.encode()):
         # Log only first 4 chars for debugging, never full token
         token = credentials.credentials
         token_preview = token[:4] + "..." if len(token) > 4 else "****"

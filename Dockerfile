@@ -2,8 +2,7 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PUBLIC_DIR=/data/public
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /srv
 
@@ -21,7 +20,7 @@ COPY app/ ./app/
 
 RUN pip install --upgrade pip && pip install .
 
-RUN mkdir -p /data/public && useradd -m -u 10001 appuser && chown -R appuser:appuser /srv /data
+RUN mkdir -p /data && useradd -m -u 10001 appuser && chown -R appuser:appuser /srv /data
 USER appuser
 
 EXPOSE 8379

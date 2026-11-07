@@ -50,7 +50,7 @@ Request:
 
 | Field | Tipe | Wajib | Default | Keterangan |
 |---|---|---|---|---|
-| `file` | file | ya | – | PDF, maksimal 30 MB, tanpa password |
+| `file` | file | ya | – | PDF, maksimal 30 MB / 500 halaman, tanpa password |
 | `scan_images` | bool | tidak | `false` | OCR halaman hasil scan |
 | `extract_images` | bool | tidak | `true` | Ekstrak gambar embedded |
 | `ocr_images` | bool | tidak | `false` | OCR tiap gambar (butuh `extract_images=true`) |
@@ -92,8 +92,11 @@ Catatan field:
 - `markdown_url` dan `images[].url` adalah path relatif yang harus dilayani
   consumer; jangan prefix dengan base URL converter.
 - `images[].kind`: `image` (embedded) atau `scan` (halaman scan).
-- `images[].data_base64`: byte gambar/scan dalam Base64. Decode dan simpan di
-  path `images[].url`; jangan teruskan field ini ke browser setelah tersimpan.
+- `images[].data_base64`: byte gambar/scan dalam Base64. Dikirim hanya bila
+  request memakai opsi gambar (`extract_images=true` atau `scan_images=true`);
+  tanpa opsi tersebut `images` kosong dan tidak ada payload Base64. Decode dan
+  simpan di path `images[].url`; jangan teruskan field ini ke browser setelah
+  tersimpan.
 - `images[].ocr_text`: teks OCR bila `ocr_images=true`; `flowchart_mermaid`: diagram Mermaid bila gambar terdeteksi flowchart.
 - `metadata`: metadata PDF (`title`, `author`, `subject`, `keywords`, `creator`, `producer`, `creationDate`, `modDate`); `{}` bila kosong.
 - `warnings`: mis. gambar dilewati karena melebihi cap OCR.
@@ -102,7 +105,7 @@ Error:
 
 | Status | Kapan |
 |---|---|
-| `400` | Bukan PDF / content-type tak didukung / `ocr_scope` salah / PDF berpassword |
+| `400` | Bukan PDF / content-type tak didukung / `ocr_scope` salah / PDF berpassword / > 500 halaman |
 | `401` | Token salah / tidak ada (bila key di-set) |
 | `413` | File > 30 MB |
 | `429` | Rate limit |
@@ -117,7 +120,7 @@ Request:
 
 | Field | Tipe | Wajib | Default | Keterangan |
 |---|---|---|---|---|
-| `file` | file | ya | – | PNG / JPEG / WebP / TIFF, maksimal `MAX_IMAGE_MB` (default 10 MB) |
+| `file` | file | ya | – | PNG / JPEG / WebP / TIFF, maksimal `MAX_IMAGE_MB` (default 10 MB) dan `MAX_IMAGE_PIXELS` (default 50 MP) |
 
 Contoh:
 
@@ -140,7 +143,7 @@ Error:
 |---|---|
 | `400` | Bukan gambar / suffix atau content-type tak didukung / file corrupt |
 | `401` | Token salah / tidak ada (bila key di-set) |
-| `413` | File > `MAX_IMAGE_MB` |
+| `413` | File > `MAX_IMAGE_MB` atau resolusi > `MAX_IMAGE_PIXELS` |
 | `429` | Rate limit |
 | `500` | Gagal memproses gambar |
 
@@ -150,7 +153,7 @@ Konversi async untuk PDF besar. Field sama seperti `/v1/convert`, plus:
 
 | Field | Tipe | Wajib | Keterangan |
 |---|---|---|---|
-| `webhook_url` | string | tidak | URL `http(s)` untuk callback saat job selesai (lihat §9) |
+| `webhook_url` | string | tidak | URL `http(s)` untuk callback saat job selesai (lihat §7) |
 
 Langsung `202`, tanpa menunggu selesai:
 
@@ -200,24 +203,20 @@ curl.exe -X DELETE "http://127.0.0.1:8379/v1/convert/jobs/<job_id>" `
   -H "Authorization: Bearer $env:PDF_MD_CONVERTER_API_KEY"
 ```
 
-## 7. GET /v1/documents
-
-Stub legacy. Converter tidak menyimpan artefak; respons selalu:
-
-```json
-{ "documents": [] }
-```
-
-Error: `401` (auth).
-
-## 8. GET /v1/download/{doc_id}
-
-Stub legacy. Selalu `404`. Gunakan field `markdown` dari response konversi.
-
-## 9. Webhook job (callback)
+## 7. Webhook job (callback)
 
 Bila `POST /v1/convert/jobs` menyertakan `webhook_url`, service `POST` ke URL itu
-saat job `done`/`error` (dengan retry + backoff). Contoh payload:
+saat job `done`/`error` (maksimal 3 percobaan dengan backoff, total jeda ±6 detik).
+Pengiriman berjalan di thread terpisah dan tidak memblokir event loop.
+
+Batasan keamanan (ditolak `400` saat submit):
+
+- Hanya `http`/`https` dengan port standar (`80`/`443`).
+- Host harus publik; loopback/private/link-local/reserved/multicast ditolak.
+- Kredensial di URL (`user:pass@host`) ditolak.
+- Redirect tidak diikuti (`follow_redirects=false`).
+
+Contoh payload:
 
 ```json
 {
@@ -233,16 +232,21 @@ saat job `done`/`error` (dengan retry + backoff). Contoh payload:
 
 (`result` = objek `ConvertResponse` penuh seperti §2.)
 
-## 10. DELETE /v1/documents/{doc_id}
-
-Stub legacy. Selalu `404`; penghapusan artefak menjadi tanggung jawab consumer.
-
-## 11. Handoff artefak
+## 8. Handoff artefak
 
 Untuk setiap hasil sinkron atau job async berstatus `done`, consumer:
 
 1. Menulis `markdown` ke path `markdown_url`.
-2. Decode setiap `images[].data_base64`.
+2. Decode setiap `images[].data_base64` (hanya ada bila opsi gambar/scan aktif).
 3. Menulis byte hasil decode ke path `images[].url`.
 4. Menghapus `data_base64` sebelum response diteruskan ke browser.
 5. Menghapus artefak berdasarkan `expires_at`.
+
+## 9. Batas resource
+
+- PDF: `MAX_UPLOAD_MB` (default 30) dan `MAX_PAGES` (default 500).
+- Gambar: `MAX_IMAGE_MB` (default 10) dan `MAX_IMAGE_PIXELS` (default 50 MP).
+- Dokumen: `MAX_IMAGES_PER_DOC` (default 200), `OCR_MAX_IMAGES` (default 100).
+- Timeout keras per konversi tidak didukung (thread Python tidak bisa dibunuh
+  dengan aman); gunakan `MAX_PAGES`, jalur async, dan batas OCR. Dokumen yang
+  sangat besar sebaiknya dipecah.

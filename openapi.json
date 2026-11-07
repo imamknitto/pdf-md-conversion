@@ -25,118 +25,6 @@
         }
       }
     },
-    "/v1/documents": {
-      "get": {
-        "summary": "List Documents",
-        "description": "Legacy: artifacts live on the consumer; converter never lists files.",
-        "operationId": "list_documents_v1_documents_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response List Documents V1 Documents Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/v1/download/{doc_id}": {
-      "get": {
-        "summary": "Download Markdown",
-        "description": "Legacy: markdown is returned in convert/job responses, not as files here.",
-        "operationId": "download_markdown_v1_download__doc_id__get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "doc_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Doc Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/documents/{doc_id}": {
-      "delete": {
-        "summary": "Delete Document",
-        "description": "Legacy: artifact deletion is owned by the consumer.",
-        "operationId": "delete_document_v1_documents__doc_id__delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "doc_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Doc Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/convert": {
       "post": {
         "summary": "Convert",
@@ -226,7 +114,7 @@
     "/v1/convert/jobs": {
       "post": {
         "summary": "Convert Async",
-        "description": "Accept a conversion as a background job (for large PDFs).\n\nReturns 202 immediately; poll GET /convert/jobs/{job_id}. The heavy\nwork runs in a thread so /health stays responsive on the single worker.\n\nArgs:\n    webhook_url: Optional URL to POST job completion callback to.",
+        "description": "Accept a conversion as a background job (for large PDFs).\n\nReturns 202 immediately; poll GET /convert/jobs/{job_id}. A single worker\nthread processes one job at a time (OCR engine is a singleton), so\nadditional jobs stay `queued` until it is their turn.",
         "operationId": "convert_async_v1_convert_jobs_post",
         "requestBody": {
           "content": {

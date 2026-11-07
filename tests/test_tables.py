@@ -53,21 +53,21 @@ class TestNormalize:
 
 class TestValid:
     def test_single_row_invalid(self):
-        assert _valid([["a", "b"]], None) is False
+        assert _valid([["a", "b"]]) is False
 
     def test_single_column_invalid(self):
-        assert _valid([["a"], ["b"]], None) is False
+        assert _valid([["a"], ["b"]]) is False
 
     def test_valid_table(self):
-        assert _valid([["a", "b"], ["c", "d"]], None) is True
+        assert _valid([["a", "b"], ["c", "d"]]) is True
 
     def test_cell_too_long_invalid(self):
         long_cell = "x" * 301
-        assert _valid([[long_cell, "b"], ["c", "d"]], None) is False
+        assert _valid([[long_cell, "b"], ["c", "d"]]) is False
 
     def test_cell_at_limit_valid(self):
         at_limit = "x" * 300
-        assert _valid([[at_limit, "b"], ["c", "d"]], None) is True
+        assert _valid([[at_limit, "b"], ["c", "d"]]) is True
 
 
 class TestIOU:
@@ -120,5 +120,5 @@ class TestTableToMarkdown:
 
     def test_special_chars_escaped(self):
         result = table_to_markdown([["A|B", "C"], ["D", "E|F"]])
-        assert "| A|B | C |" in result
-        assert "| D | E|F |" in result
+        assert "| A\\|B | C |" in result
+        assert "| D | E\\|F |" in result

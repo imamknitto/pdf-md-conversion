@@ -73,20 +73,6 @@ def _record_success() -> None:
         _failure_count = 0
 
 
-def get_circuit_state() -> str:
-    """Get current circuit breaker state (for monitoring)."""
-    return _circuit_state.value
-
-
-def reset_circuit_breaker() -> None:
-    """Manually reset circuit breaker (for testing/admin)."""
-    global _failure_count, _circuit_state, _engine
-    with _lock:
-        _failure_count = 0
-        _circuit_state = CircuitState.CLOSED
-        _engine = None
-
-
 def upscale_safe(image):
     """Perbesar gambar kecil secara aman sebelum OCR (LANCZOS, ber-batas).
 
@@ -143,18 +129,16 @@ def sort_boxes_top_left(boxes: list[dict], y_tol: float | None = None) -> list[d
     return ordered
 
 
-def prepare_image(image_bytes: bytes) -> tuple:
-    """Decode + fit an image for OCR.
-
-    Returns (image_or_None, status) with status one of:
-    'ok' | 'tiny' (below OCR_SKIP_BELOW, likely an icon) | 'broken'.
-    Large images are downscaled to OCR_MAX_SIDE; small ones go through
-    upscale_safe as before.
-    """
+def prepare_pil_image(image) -> tuple:
+    """Fit an already-decoded image for OCR (same guards as ``prepare_image``)."""
     from PIL import Image as _Image
 
     try:
-        image = _Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        if image.size[0] * image.size[1] > config.MAX_IMAGE_PIXELS:
+            return None, "too_large"
+        image = image.convert("RGB")
+    except _Image.DecompressionBombError:
+        return None, "too_large"
     except Exception:
         return None, "broken"
     try:
@@ -175,20 +159,44 @@ def prepare_image(image_bytes: bytes) -> tuple:
     return upscale_safe(image), "ok"
 
 
+def prepare_image(image_bytes: bytes) -> tuple:
+    """Decode + fit an image for OCR.
+
+    Returns (image_or_None, status) with status one of:
+    'ok' | 'tiny' (below OCR_SKIP_BELOW, likely an icon) | 'too_large'
+    (over MAX_IMAGE_PIXELS) | 'broken'.
+    Large images are downscaled to OCR_MAX_SIDE; small ones go through
+    upscale_safe as before.
+    """
+    from PIL import Image as _Image
+
+    try:
+        image = _Image.open(io.BytesIO(image_bytes))
+    except _Image.DecompressionBombError:
+        return None, "too_large"
+    except Exception:
+        return None, "broken"
+    return prepare_pil_image(image)
+
+
 def ocr_image_boxes(image_bytes: bytes) -> list[dict]:
     """OCR dan kembalikan box berposisi: [{text, cx, cy, conf}]."""
     boxes, _ = ocr_image_boxes_ex(image_bytes)
     return boxes
 
 
-def ocr_image_boxes_ex(image_bytes: bytes) -> tuple[list[dict], str]:
+def ocr_image_boxes_ex(image_bytes: bytes | None = None, *, image=None) -> tuple[list[dict], str]:
     """Like ocr_image_boxes but also reports why nothing came back.
 
+    Pass ``image`` (a decoded PIL image) to skip PNG encode/decode for scans.
     status: 'ok' | 'tiny' | 'broken' | 'empty' | 'circuit_open' (no text found).
     """
     import numpy as np
 
-    image, pre = prepare_image(image_bytes)
+    if image is not None:
+        image, pre = prepare_pil_image(image)
+    else:
+        image, pre = prepare_image(image_bytes or b"")
     if image is None:
         return [], pre
     try:
@@ -231,4 +239,10 @@ def ocr_image(image_bytes: bytes) -> str:
     dan pengurutan top-to-bottom / left-to-right.
     """
     boxes = ocr_image_boxes(image_bytes)
+    return "\n".join(b["text"] for b in boxes)
+
+
+def ocr_image_from_pil(image) -> str:
+    """OCR an already-decoded image (scan pages) without PNG encode/decode."""
+    boxes, _ = ocr_image_boxes_ex(image=image)
     return "\n".join(b["text"] for b in boxes)
