@@ -8,21 +8,27 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
-from .api.routes import convert, documents, health, jobs, ocr
+from .api.routes import convert, health, jobs, ocr
 from .core import config
+from .core.rate_limit import limiter
+from .core.version import __version__
 from .services import job_service as job_svc
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
 logger = logging.getLogger("pdf-md-conversion")
 
 _SHUTDOWN_TIMEOUT = 300.0  # 5 minutes max wait for in-progress jobs
+
+
+def _configure_logging() -> None:
+    """Configure console logging at startup instead of import time."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
 
 _URL_RE = re.compile(
@@ -57,28 +63,38 @@ def _cors_origins() -> list[str]:
     return _validate_cors_origins(raw)
 
 
-limiter = Limiter(key_func=get_remote_address, default_limits=[])
+async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """429 in the same `{"detail": ...}` shape as every other API error."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit terlampaui: {exc.detail}"},
+    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _configure_logging()
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    recovered = await asyncio.to_thread(job_svc.recover_interrupted_jobs)
+    if recovered:
+        logger.warning("Recovered %d interrupted job(s) as error", recovered)
+    jobs.start_worker()
     try:
         yield
     finally:
-        # Graceful shutdown: stop accepting new jobs, wait for in-progress
+        # Graceful shutdown: stop accepting new jobs, finish the active job.
         logger.info("Shutdown initiated: stopping job acceptance")
         job_svc.initiate_shutdown()
 
-        logger.info("Waiting for in-progress jobs to complete (timeout=%.1fs)", _SHUTDOWN_TIMEOUT)
-        finished = await asyncio.to_thread(job_svc.wait_for_jobs, _SHUTDOWN_TIMEOUT)
+        logger.info("Waiting for the active job to complete (timeout=%.1fs)", _SHUTDOWN_TIMEOUT)
+        finished = await asyncio.to_thread(jobs.stop_worker, _SHUTDOWN_TIMEOUT)
         if finished:
-            logger.info("All in-progress jobs completed")
+            logger.info("Conversion worker stopped cleanly")
         else:
-            logger.warning("Shutdown timeout: some jobs may still be running")
+            logger.warning("Shutdown timeout: a job may still be running")
 
 
-app = FastAPI(title="pdf-md-conversion", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="pdf-md-conversion", version=__version__, lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -108,12 +124,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Compress large responses (markdown + base64 images). Small bodies are below
+# the threshold, so error/health payloads are unaffected.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 config.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 API_PREFIX = "/v1"
 app.include_router(health.router, prefix=API_PREFIX)
-app.include_router(documents.router, prefix=API_PREFIX)
 app.include_router(convert.router, prefix=API_PREFIX)
 app.include_router(ocr.router, prefix=API_PREFIX)
 app.include_router(jobs.router, prefix=API_PREFIX)

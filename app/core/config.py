@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from PIL import Image as _PILImage
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,6 +13,8 @@ _BOOL_TRUE = {"1", "true", "yes", "on"}
 
 _INT_FIELDS = {
     "MAX_UPLOAD_MB",
+    "MAX_PAGES",
+    "MAX_IMAGE_PIXELS",
     "PUBLIC_TTL_MINUTES",
     "MIN_TEXT_CHARS",
     "MAX_IMAGE_MB",
@@ -36,45 +39,30 @@ _FLOAT_FIELDS = {
     "FLOWCHART_Y_TOL",
 }
 
-_DEFAULTS: dict[str, Any] = {
-    "MAX_UPLOAD_MB": 30,
-    "PUBLIC_TTL_MINUTES": 60,
-    "MIN_TEXT_CHARS": 50,
-    "PAGE_COVERAGE": 0.5,
-    "RECURRING_XREF_RATIO": 0.5,
-    "IMAGE_MIN_AREA_RATIO": 0.01,
-    "MAX_IMAGE_MB": 10,
-    "MAX_IMAGES_PER_DOC": 200,
-    "OCR_DPI": 200,
-    "OCR_MIN_SIDE": 1200,
-    "OCR_MAX_SCALE": 2.0,
-    "OCR_MAX_PIXELS": 9000000,
-    "OCR_MAX_SIDE": 1600,
-    "OCR_SKIP_BELOW": 100,
-    "OCR_MAX_IMAGES": 100,
-    "FLOWCHART_ENABLE": True,
-    "FLOWCHART_Y_TOL": 10.0,
-    "FLOWCHART_MAX_SHAPES": 200,
-    "FLOWCHART_SCORE_MIN": 2,
-    "TABLE_FAST_MODE": False,
-    "CONVERT_JOB_TTL_MINUTES": 120,
-    "CONVERT_MAX_QUEUE": 8,
-}
-
 
 class Settings(BaseSettings):
     """Knobs aplikasi; nama env var, default, dan tipe sama seperti tabel README.
 
     Nilai env yang tidak valid jatuh kembali ke default (perilaku config lama).
+    Env proses menang atas `.env` (prioritas default pydantic-settings).
     PDF_MD_CONVERTER_API_KEY + PLATFORM_URL sengaja tidak di sini: dibaca per-request
     via os.getenv agar perubahan env/auth test tetap berlaku saat runtime.
     """
 
-    model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_prefix="",
+        case_sensitive=False,
+        extra="ignore",
+        env_file=BASE_DIR / ".env",
+        env_file_encoding="utf-8",
+    )
 
     MAX_UPLOAD_MB: int = 30
+    MAX_PAGES: int = 500
+    MAX_IMAGE_PIXELS: int = 50_000_000
     # Runtime data (async job registry: jobs.sqlite). Not served over HTTP.
     DATA_DIR: Path = BASE_DIR / "data"
+    # Metadata for consumers (`expires_at`); the service keeps no artifacts.
     PUBLIC_TTL_MINUTES: int = 60
     MIN_TEXT_CHARS: int = 50
     PAGE_COVERAGE: float = 0.5
@@ -95,33 +83,37 @@ class Settings(BaseSettings):
     FLOWCHART_SCORE_MIN: int = 2
     TABLE_FAST_MODE: bool = False
     CONVERT_JOB_TTL_MINUTES: int = 120
-    CONVERT_MAX_QUEUE: int = 8
+    CONVERT_MAX_QUEUE: int = 4
+
+    @classmethod
+    def _default(cls, field_name: str) -> Any:
+        return cls.model_fields[field_name].default
 
     @field_validator(*_INT_FIELDS, mode="before")
     @classmethod
     def _lenient_int(cls, v: Any, info: ValidationInfo) -> Any:
         if v is None or (isinstance(v, str) and v.strip() == ""):
-            return _DEFAULTS[info.field_name]
+            return cls._default(info.field_name)
         try:
             return int(v)
         except (TypeError, ValueError):
-            return _DEFAULTS[info.field_name]
+            return cls._default(info.field_name)
 
     @field_validator(*_FLOAT_FIELDS, mode="before")
     @classmethod
     def _lenient_float(cls, v: Any, info: ValidationInfo) -> Any:
         if v is None or (isinstance(v, str) and v.strip() == ""):
-            return _DEFAULTS[info.field_name]
+            return cls._default(info.field_name)
         try:
             return float(v)
         except (TypeError, ValueError):
-            return _DEFAULTS[info.field_name]
+            return cls._default(info.field_name)
 
     @field_validator("FLOWCHART_ENABLE", "TABLE_FAST_MODE", mode="before")
     @classmethod
     def _lenient_bool(cls, v: Any, info: ValidationInfo) -> Any:
         if v is None:
-            return _DEFAULTS[info.field_name]
+            return cls._default(info.field_name)
         if isinstance(v, bool):
             return v
         return str(v).strip().lower() in _BOOL_TRUE
@@ -130,7 +122,7 @@ class Settings(BaseSettings):
     @classmethod
     def _lenient_path(cls, v: Any) -> Any:
         if v is None or (isinstance(v, str) and v.strip() == ""):
-            return BASE_DIR / "data"
+            return cls._default("DATA_DIR")
         return v
 
     @property
@@ -143,6 +135,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Second layer against decompression bombs (explicit checks live in deps/ocr).
+_PILImage.MAX_IMAGE_PIXELS = settings.MAX_IMAGE_PIXELS
 
 
 def __getattr__(name: str) -> Any:
